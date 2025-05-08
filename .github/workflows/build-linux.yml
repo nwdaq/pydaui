@@ -18,17 +18,19 @@ jobs:
       uses: actions/setup-python@v3
       with:
         python-version: "3.13"
-    
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-    
+
     - name: Build
       run: |
-        pyinstaller -F --exclude-module numpy --exclude-module PIL --exclude-module PySide6.QtOpenGL --exclude-module PySide6.QtOpenGLWidgets --strip src/pydaui.py
-    
+        pyinstaller -F --exclude-module numpy --exclude-module PIL --exclude-module PySide6.QtOpenGL --exclude-module PySide6.QtOpenGLWidgets --strip src/pydaui.py -n pydaui-`git describe`-linux.bin
+        echo "ARTIFACT_NAME=pydaui-`git describe`-linux" >> $GITHUB_ENV
+
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        path: dist/
+        path: dist/*.bin
+        name: ${{ env.ARTIFACT_NAME }}
