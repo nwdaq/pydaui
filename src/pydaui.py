@@ -5,7 +5,8 @@ import logging
 from colorama import init as colorama_init, Fore, Back, Style
 import argparse
 from dataclasses import dataclass
-from uritools import urisplit, uricompose
+import tempfile
+import os
 
 from PySide6.QtCore import *
 from PySide6.QtWidgets import *
@@ -13,10 +14,9 @@ from PySide6.QtGui import *
 from superqt.fonticon import icon, spin, pulse
 # from fonticon_fa6 import FA6S
 
-from pyocd.core.helpers import ConnectHelper
-from pyocd.flash.loader import MemoryLoader
-from pyocd.core.exceptions import ProbeError
-
+from connection.service_proxy import *
+from ui.menu import *
+from applets.flash import *
 
 LOG_FORMAT = f"""[{Style.BRIGHT}{Fore.WHITE}%(asctime)s{Style.NORMAL}] {Fore.BLUE}{Style.BRIGHT}%(levelname)-10s{Fore.YELLOW}{Style.NORMAL}%(module)s:%(name)s: {Style.RESET_ALL}%(message)s"""
 
@@ -26,159 +26,6 @@ def assert_depends(val):
 		raise ValueError('missing dependency')
 
 
-class ServiceProxyNotConnected(Exception):
-	pass
-
-
-class ServiceProxyConnection:
-
-	def __init__(self):
-		self._uri = ''
-
-	def connectUri(self, uri):
-		self._uri = uri
-
-	def disconnectUri(self):
-		self._uri = ''
-
-	@property
-	def uri(self):
-		return self._uri
-
-
-@dataclass
-class ServiceProxyTarget:
-	uri: str
-	vendor: str
-	product: str
-
-
-class ServiceProxyConnectionError(Exception):
-	pass
-
-class SwdServiceProxyConnection(ServiceProxyConnection):
-
-	@dataclass
-	class Product:
-		pn: str
-		version: str
-		mcu: str
-		pack: str
-
-	products = [
-		Product('v35v-ctrl', '1.0.0', 'STM32G491CCUx', 'Keil.STM32G4xx_DFP.2.0.0.pack'),
-	]
-
-
-	def __init__(self):
-		super().__init__()
-		self._logger = logging.getLogger(self.__class__.__name__)
-		self._session = None
-
-	def connectUri(self, uri):
-		super().connectUri(uri)
-		uris = urisplit(uri)
-		self._session = ConnectHelper.session_with_chosen_probe(
-			unique_id=uris.host,
-			options={
-				"target_override": "STM32G491CCUx",
-				"pack": "Keil.STM32G4xx_DFP.2.0.0.pack",
-			}
-		)
-		try:
-			self._session.open()
-		except ProbeError as e:
-			self._session.close()
-			self._logger.error(f'cannot connect target on {uri}: {str(e)}')
-			self._session = None
-			raise ServiceProxyConnectionError()
-
-		self._loader = MemoryLoader(self._session)
-		print(self._session.board.target.memory_map)
-
-	def disconnectUri(self):
-		super().disconnectUri()
-		self._session.close()
-		self._session = None
-
-	@property
-	def connected(self):
-		return self._session != None
-
-	@staticmethod
-	def probe():
-		targets = []
-		for dp in ConnectHelper.get_all_connected_probes():
-			targets.append(ServiceProxyTarget(
-				vendor=dp.vendor_name,
-				product=dp.product_name,
-				uri=uricompose(scheme='swd', host=dp.unique_id),
-			))
-
-		return targets
-
-
-class Singleton(type(QObject)):
-	def __init__(cls, name, bases, dict):
-		super().__init__(name, bases, dict)
-		cls.instance = None
-
-	def __call__(cls, *args, **kw):
-		if cls.instance is None:
-			cls.instance = super().__call__(*args, **kw)
-		return cls.instance
-
-
-class ServiceProxy(QObject, metaclass=Singleton):
-
-	connectionChanged = Signal(str)
-
-	def __init__(self):
-		super().__init__()
-		self._connection = None
-		self._logger = logging.getLogger(self.__class__.__name__)
-
-
-	def connectUri(self, uri):
-		uris = urisplit(uri)
-		if self._connection:
-			self._connection.disconnectUri()
-			self._connection = None
-
-		self._logger.info(f'connecting to {uri}')
-
-		try:
-			if uris.scheme == 'swd':
-				self._connection = SwdServiceProxyConnection()
-			self._connection.connectUri(uri)
-		except ServiceProxyConnectionError as e:
-			self._connection = None
-			raise e
-		self.connectionChanged.emit(uri)
-
-	def disconnectUri(self):
-		self._logger.info(f'disconnecting from {self._connection.uri}')
-		self._connection.disconnectUri()
-		self._connection = None
-		self.connectionChanged.emit(None)
-
-	def probe(self):
-		targets = SwdServiceProxyConnection.probe()
-		for t in targets:
-			self._logger.info(f'discovered target at {t.uri} ({t.vendor} {t.product})')
-		return targets
-
-	@property
-	def connection(self):
-		return self._connection
-
-	@property
-	def connected(self):
-		return self._connection and self._connection.connected
-
-
-class ServiceProxySocket:
-	pass
 
 
 class ConfigTree(QTreeWidget):
@@ -196,58 +43,12 @@ class ConfigTree(QTreeWidget):
 		self.addTopLevelItem(t)
 
 
-class MainMenu(QMenu):
-
-	def __init__(self):
-		super().__init__()
-
 
 class MdiArea(QMdiArea):
 
 	def __init__(self):
 		super().__init__()
 
-
-class ConnectionToolBar(QToolBar):
-
-	def __init__(self):
-		super().__init__()
-
-		self._con_ok_icon = icon('mdi7.link', color='#44c', scale_factor=1)
-		self._con_none_icon = icon('mdi7.link', color='#888', scale_factor=1)
-
-		self._state_btn = QToolButton()
-		self._state_btn.setIcon(self._con_none_icon)
-		self._state_btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-		self._state_btn.setEnabled(False)
-		self.addWidget(self._state_btn)
-
-		self._disconnect_btn = QToolButton()
-		self._disconnect_btn.setIcon(icon('mdi7.power', color='#c00', scale_factor=1))
-		self._disconnect_btn.setText('Disconnect')
-		self._disconnect_btn.setEnabled(False)
-		self._disconnect_btn.clicked.connect(self._disconnectClicked)
-		self.addWidget(self._disconnect_btn)
-
-		self._connectionChanged(None)
-
-		self._sp = ServiceProxy()
-		self._sp.connectionChanged.connect(self._connectionChanged)
-
-	@Slot(str)
-	def _connectionChanged(self, uri):
-		if uri:
-			self._state_btn.setText(uri)
-			self._state_btn.setIcon(self._con_ok_icon)
-			self._disconnect_btn.setEnabled(True)
-		else:
-			self._state_btn.setText('no connection')
-			self._state_btn.setIcon(self._con_none_icon)
-			self._disconnect_btn.setEnabled(False)
-
-	@Slot()
-	def _disconnectClicked(self):
-		self._sp.disconnectUri()
 
 
 
@@ -263,6 +64,9 @@ class MainWindow(QMainWindow):
 		self._overlay.setStyleSheet("background-color: rgba(128, 128, 128, 128);")
 		self._overlay.hide()
 
+		self._main_menu = MainMenu()
+		self.addToolBar(self._main_menu)
+		self.addToolBarBreak()
 
 
 		self.tb = QToolBar()
@@ -293,17 +97,13 @@ class MainWindow(QMainWindow):
 
 		self.tb.addWidget(self.rib)
 
-		self.addToolBar(ConnectionToolBar())
-		self.addToolBarBreak()
 		self.addToolBar(self.tb)
-
-		d = QDockWidget()
-		d.setWidget(ConfigTree())
-		self.addDockWidget(Qt.TopDockWidgetArea, d)
-		d.show()
 
 		self._mdi_area = MdiArea()
 		self.setCentralWidget(self._mdi_area)
+
+		self._mdi_area.addSubWindow(FlashVolumeList())
+
 
 	def resizeEvent(self, event):
 		super().resizeEvent(event)
@@ -508,6 +308,10 @@ class DauiApplication(QApplication):
 		self._main_window.show()
 
 		self._connect_window = ConnectWindow(parent=self._main_window)
+
+	def exec(self):
+		super().exec()
+		ServiceProxy().disconnectUri()
 
 
 
