@@ -210,10 +210,29 @@ class FlashVolume(QWidget):
 		self.setLayout(self._layout)
 
 
-class FlashVolumeList(QMdiSubWindow):
+class AppletWindow(QMdiSubWindow):
 
 	def __init__(self, parent=None):
 		super().__init__(parent=parent)
+
+	def moveEvent(self, event):
+		super().moveEvent(event)
+
+		if self.x() < 20:
+			self.move(0, self.y())
+		elif (self.x() + self.width()) >= (self.parent().width() - 20):
+			self.move(self.parent().width() - self.width(), self.y())
+
+		if self.y() < 20:
+			self.move(self.x(), 0)
+		elif (self.y() + self.height()) >= (self.parent().height() - 20):
+			self.move(self.x(), self.parent().height() - self.height())
+
+
+class FlashVolumeList(AppletWindow):
+
+	def __init__(self):
+		super().__init__()
 		self._service_proxy = ServiceProxy()
 
 		self.setWidget(FlashVolume())
