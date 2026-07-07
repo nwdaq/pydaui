@@ -8,7 +8,7 @@ from PySide6.QtWidgets import *
 from PySide6.QtGui import *
 from superqt.fonticon import icon, spin, pulse
 
-from connection.service_proxy import *
+from pydaui.connection.service_proxy import *
 
 
 class DDRegion(QFrame):

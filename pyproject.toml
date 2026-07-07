@@ -1,0 +1,40 @@
+[project]
+name = "pydaui"
+dynamic = ["version"]
+description = "da_UI DAQ frontend interface for devices running the plumCore framework"
+authors = [
+    { name = "Marek Koza", email = "qyx@krtko.org" },
+]
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "superqt==0.7.3",
+    "fonticon-materialdesignicons7==7.2.96",
+    "PySide6==6.8.2.1",
+    "cbor2==5.6.4",
+    "colorama==0.4.6",
+    "humanize==4.11.0",
+    "pyocd==0.36.0",
+    "uritools==4.0.3",
+]
+
+[project.scripts]
+pydaui = "pydaui.__main__:main"
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+[tool.pdm]
+distribution = true
+
+[tool.pdm.version]
+source = "scm"
+
+[tool.pdm.build]
+package-dir = "src"
+includes = ["src/pydaui"]
+
+[tool.pdm.dev-dependencies]
+build = [
+    "pyinstaller==6.12.0",
+]

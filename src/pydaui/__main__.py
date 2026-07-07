@@ -14,9 +14,9 @@ from PySide6.QtGui import *
 from superqt.fonticon import icon, spin, pulse
 # from fonticon_fa6 import FA6S
 
-from connection.service_proxy import *
-from ui.menu import *
-from applets.flash import *
+from pydaui.connection.service_proxy import *
+from pydaui.ui.menu import *
+from pydaui.applets.flash import *
 
 LOG_FORMAT = f"""[{Style.BRIGHT}{Fore.WHITE}%(asctime)s{Style.NORMAL}] {Fore.BLUE}{Style.BRIGHT}%(levelname)-10s{Fore.YELLOW}{Style.NORMAL}%(module)s:%(name)s: {Style.RESET_ALL}%(message)s"""
 
@@ -315,8 +315,7 @@ class DauiApplication(QApplication):
 
 
 
-if __name__ == "__main__":
-
+def main():
 	parser = argparse.ArgumentParser(
 		description='da_UI DAQ frontend interface',
 		epilog='(c) 2024-2025 Marek Koza <qyx@krtko.org>',
@@ -340,3 +339,7 @@ if __name__ == "__main__":
 
 	app = DauiApplication(sys.argv)
 	sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+	main()
