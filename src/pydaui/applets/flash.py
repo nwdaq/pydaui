@@ -1,3 +1,10 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Flash volume applet
+#
+# Copyright (c) 2025, Marek Koza (qyx@krtko.org)
+# All rights reserved.
+
 import logging
 import tempfile
 import os

@@ -5,7 +5,11 @@ description = "da_UI DAQ frontend interface for devices running the plumCore fra
 authors = [
     { name = "Marek Koza", email = "qyx@krtko.org" },
 ]
+license = { text = "GPL-3.0-or-later" }
 requires-python = ">=3.13,<3.14"
+classifiers = [
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+]
 dependencies = [
     "superqt==0.7.3",
     "fonticon-materialdesignicons7==7.2.96",

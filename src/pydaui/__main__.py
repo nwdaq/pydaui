@@ -1,4 +1,10 @@
 #!/usr/bin/env python
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# pydaui application entry point and main window
+#
+# Copyright (c) 2025, Marek Koza (qyx@krtko.org)
+# All rights reserved.
 
 import sys
 import logging
