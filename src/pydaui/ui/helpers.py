@@ -162,6 +162,23 @@ def save_icon(stroke='#1d3f7a', fill='#79a6e3'):
 	return SvgIcon(SAVE_SVG.format(stroke=stroke, fill=fill))
 
 
+#: The quit icon: a door with an arrow leaving through it, drawn as an outline, {stroke}, {fill} and
+#: {arrow} are filled in by :func:`quit_icon`.
+QUIT_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+	<g stroke="{stroke}" stroke-width="1.1" stroke-linejoin="round">
+		<path fill="#fff" d="M3.5 3.5 H14.5 V20.5 H3.5 Z"/>
+		<path fill="{fill}" d="M3.5 3.5 L10.5 5.5 V22 L3.5 20.5 Z"/>
+		<circle cx="8.8" cy="13" r="0.7" fill="{stroke}" stroke="none"/>
+		<path fill="{arrow}" d="M12 10.5 H16.5 V7.3 L21.5 12 L16.5 16.7 V13.5 H12 Z"/>
+	</g>
+</svg>"""
+
+
+def quit_icon(stroke='#7a1d1d', fill='#e3a079', arrow='#e37979'):
+	"""A quit icon: an open door with a red arrow pointing out."""
+	return SvgIcon(QUIT_SVG.format(stroke=stroke, fill=fill, arrow=arrow))
+
+
 #: A tree branch indicator: a small box with a plus (collapsed) or a minus (expanded) sign. {sign} is
 #: filled in with the path of the sign by :func:`expand_icon` and :func:`collapse_icon`.
 BRANCH_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 12">
