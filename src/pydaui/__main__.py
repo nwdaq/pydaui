@@ -138,8 +138,6 @@ class MainWindow(QMainWindow):
 		self._mdi_area = MdiArea()
 		self.setCentralWidget(self._mdi_area)
 
-		self._mdi_area.addSubWindow(FlashVolumeList(self._connection))
-
 		self._connection.connectionChanged.connect(self._connectionChanged)
 		self._connectionChanged(self._connection.uri)
 
