@@ -13,10 +13,12 @@ import argparse
 from dataclasses import dataclass
 import tempfile
 import os
+from pathlib import Path
 
 from PySide6.QtCore import *
 from PySide6.QtWidgets import *
 from PySide6.QtGui import *
+from PySide6.QtSvg import QSvgRenderer
 from superqt.fonticon import icon, spin, pulse
 # from fonticon_fa6 import FA6S
 
@@ -54,9 +56,32 @@ class ConfigTree(QTreeWidget):
 
 class MdiArea(QMdiArea):
 
+	#: The doodle tile repeated over the background, at :attr:`BACKGROUND_OPACITY` over the default colour.
+	BACKGROUND_TILE = Path(__file__).resolve().parent / 'assets' / 'doodle-tile.svg'
+	BACKGROUND_OPACITY = 0.1
+
 	def __init__(self):
 		super().__init__()
+		self.setBackground(self._backgroundBrush())
 
+	def _backgroundBrush(self):
+		"""The default background with the doodle tile drawn over it, rendered once and repeated."""
+		base = self.background()
+		renderer = QSvgRenderer(str(self.BACKGROUND_TILE))
+		if not renderer.isValid():
+			logging.getLogger(self.__class__.__name__).warning(f'cannot load the background {self.BACKGROUND_TILE}')
+			return base
+
+		# Render at the screen pixel density so the doodles stay sharp on HiDPI screens.
+		scale = QGuiApplication.primaryScreen().devicePixelRatio()
+		tile = QPixmap(renderer.defaultSize() * scale)
+		tile.setDevicePixelRatio(scale)
+		tile.fill(base.color())
+		painter = QPainter(tile)
+		painter.setOpacity(self.BACKGROUND_OPACITY)
+		renderer.render(painter, QRectF(QPointF(0, 0), renderer.defaultSize()))
+		painter.end()
+		return QBrush(tile)
 
 
 
