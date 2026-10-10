@@ -24,6 +24,7 @@ from pydaui.connection import *
 from pydaui.ui.menu import *
 from pydaui.ui.connect_window import ConnectWindow
 from pydaui.applets.flash import *
+from pydaui.applets.conf import ConfTreeWindow, PROTOCOL as CONF_PROTOCOL
 
 LOG_FORMAT = f"""[{Style.BRIGHT}{Fore.WHITE}%(asctime)s{Style.NORMAL}] {Fore.BLUE}{Style.BRIGHT}%(levelname)-10s{Fore.YELLOW}{Style.NORMAL}%(module)s:%(name)s: {Style.RESET_ALL}%(message)s"""
 
@@ -90,6 +91,7 @@ class MainWindow(QMainWindow):
 		self.tb1.setIcon(icon('mdi7.cog-outline', color='gray', scale_factor=1))
 		self.tb1.setText('Configuration tree')
 		self.tb1.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+		self.tb1.clicked.connect(self._openConfTree)
 
 		self.tb2 = QToolButton()
 		self.tb2.setIcon(icon('mdi7.cog-outline', color='gray', scale_factor=1))
@@ -113,6 +115,23 @@ class MainWindow(QMainWindow):
 
 		self._mdi_area.addSubWindow(FlashVolumeList(self._connection))
 
+		self._connection.connectionChanged.connect(self._connectionChanged)
+		self._connectionChanged(self._connection.uri)
+
+	@Slot(object)
+	def _connectionChanged(self, uri):
+		# The configuration tree needs an interface speaking the conf protocol.
+		self.tb1.setEnabled(self._connection.findInterface(CONF_PROTOCOL) is not None)
+
+	@Slot()
+	def _openConfTree(self):
+		try:
+			window = ConfTreeWindow(self._connection)
+		except Exception as e:
+			QMessageBox.warning(self, 'Configuration tree', 'Cannot open the configuration tree:\n\n%s' % e)
+			return
+		self._mdi_area.addSubWindow(window)
+		window.show()
 
 	def resizeEvent(self, event):
 		super().resizeEvent(event)

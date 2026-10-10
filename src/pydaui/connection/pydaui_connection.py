@@ -118,6 +118,12 @@ class PyDauiConnection(QObject):
 		self._children.append(side)
 		return side
 
+	def findInterface(self, protocol):
+		"""The name of the topmost discovered interface speaking ``protocol``: the one with the fewest path
+		components, the first discovered among equals. ``None`` if there is none."""
+		names = [name for name, desc in self._interfaces if desc.get('p') == protocol]
+		return min(names, key=lambda name: len(name.split()), default=None)
+
 	def send(self, data):
 		self._checkConnected()
 		self._socket.send(data)
