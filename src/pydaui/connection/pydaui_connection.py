@@ -37,6 +37,8 @@ class PyDauiConnection(QObject):
 		self._uri = None
 		self._interfaces = []
 		self._children = []
+		# The connection a side connection was opened from.
+		self._parent = None
 
 	def connectUri(self, uri):
 		if self.connected:
@@ -80,9 +82,12 @@ class PyDauiConnection(QObject):
 			return
 
 		# Tear down any side connections opened from this one first, they share its transport.
-		for child in self._children:
+		for child in list(self._children):
 			child.disconnectUri()
-		self._children = []
+
+		if self._parent is not None:
+			self._parent._children.remove(self)
+			self._parent = None
 
 		self._logger.info(f'disconnecting from {self._uri}')
 		if self._owns_nbus:
@@ -101,6 +106,7 @@ class PyDauiConnection(QObject):
 		is already talking to, as another socket sharing the underlying transport.
 
 		The side connection is tracked as a child: disconnecting this connection also disconnects it.
+		Disconnecting the side connection closes only its own socket.
 		"""
 		if not self.connected:
 			raise pynbus2.NotConnectedError('connect before opening a side connection')
@@ -108,6 +114,7 @@ class PyDauiConnection(QObject):
 		side._nbus = self._nbus
 		side._socket = self._nbus.socket(id, ep)
 		side._uri = self._uri
+		side._parent = self
 		self._children.append(side)
 		return side
 
