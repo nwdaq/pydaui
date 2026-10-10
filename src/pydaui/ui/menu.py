@@ -44,7 +44,6 @@ class MainMenu(QToolBar):
 		self.setFloatable(False)
 
 		self._menu = QMenuBar()
-		self._menu.setStyleSheet('QMenuBar::item { padding: 10px 0px; }')
 		self._menu.addMenu(ApplicationMenu())
 		self._menu.addMenu(DeviceMenu())
 		self._menu.addMenu(AboutMenu())

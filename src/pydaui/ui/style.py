@@ -12,7 +12,7 @@ from superqt.fonticon import icon
 
 
 class DauiStyle(QProxyStyle):
-	"""Fusion with flat dark MDI subwindow title bars and frames.
+	"""Fusion with flat dark MDI subwindow title bars and frames, and roomier menus.
 
 	Stylesheets cannot do this, QStyleSheetStyle paints the title bar label
 	over a hard-coded white rectangle.
@@ -28,6 +28,20 @@ class DauiStyle(QProxyStyle):
 	BUTTON_ASPECT = 1.5
 	#: Button icon size relative to the title bar height
 	ICON_SCALE = 0.6
+
+	#: Padding around the main menu bar item text, horizontal and vertical
+	MENU_BAR_ITEM_PADDING = QSize(10, 7)
+	MENU_BAR_HOVER_COLOR = QColor('#ddd')
+
+	#: Popup menu item height
+	MENU_ITEM_HEIGHT = 32
+	#: Width of the column on the left reserved for icons and check marks
+	MENU_ICON_COLUMN = 36
+	MENU_ICON_SIZE = 18
+	#: Space between the label and the shortcut column and after it
+	MENU_ITEM_PADDING = 16
+	#: Minimal width of an open menu
+	MENU_MIN_WIDTH = 300
 
 	#: Title bar buttons and their icons
 	BUTTONS = {
@@ -50,6 +64,8 @@ class DauiStyle(QProxyStyle):
 		return self._icons[name]
 
 	def polish(self, widget):
+		if isinstance(widget, QMenu):
+			widget.setMinimumWidth(self.MENU_MIN_WIDTH)
 		if isinstance(widget, QMdiSubWindow):
 			widget.installEventFilter(self)
 			for child in widget.findChildren(QWidget, options=Qt.FindDirectChildrenOnly):
@@ -79,7 +95,25 @@ class DauiStyle(QProxyStyle):
 			return self.TITLE_HEIGHT
 		if metric == QStyle.PM_MdiSubWindowFrameWidth:
 			return 1
+		if metric == QStyle.PM_MenuBarItemSpacing:
+			return 0
 		return super().pixelMetric(metric, opt, widget)
+
+	def sizeFromContents(self, ct, opt, size, widget=None):
+		size = super().sizeFromContents(ct, opt, size, widget)
+		if ct == QStyle.CT_MenuBarItem:
+			size += self.MENU_BAR_ITEM_PADDING * 2
+		elif self._isMenuItem(opt, widget):
+			# The menu adds the widest shortcut on the right itself.
+			width = self.MENU_ICON_COLUMN + size.width() + 2 * self.MENU_ITEM_PADDING
+			size = QSize(width, self.MENU_ITEM_HEIGHT)
+		return size
+
+	@staticmethod
+	def _isMenuItem(opt, widget):
+		"""Whether ``opt`` is a popup menu item other than a separator, they are drawn by :meth:`_drawMenuItem`."""
+		return (isinstance(widget, QMenu) and isinstance(opt, QStyleOptionMenuItem)
+			and opt.menuItemType != QStyleOptionMenuItem.Separator)
 
 	def styleHint(self, hint, opt=None, widget=None, ret=None):
 		# No rounded corners
@@ -140,6 +174,83 @@ class DauiStyle(QProxyStyle):
 		if sc == QStyle.SC_TitleBarLabel:
 			return QRect(r.left() + self.TITLE_PADDING, r.top(), right - r.left() - 2 * self.TITLE_PADDING, r.height())
 		return QRect()
+
+	def drawControl(self, element, opt, painter, widget=None):
+		# Fusion highlights only the open menu bar item, highlight the hovered one
+		# the same way in gray.
+		if element == QStyle.CE_MenuBarItem and opt.state & QStyle.State_Selected and opt.state & QStyle.State_Enabled and not opt.state & QStyle.State_Sunken:
+			opt = QStyleOptionMenuItem(opt)
+			opt.state |= QStyle.State_Sunken
+			opt.palette.setColor(QPalette.Highlight, self.MENU_BAR_HOVER_COLOR)
+			opt.palette.setColor(QPalette.HighlightedText, opt.palette.color(QPalette.WindowText))
+		elif element == QStyle.CE_MenuItem and self._isMenuItem(opt, widget):
+			self._drawMenuItem(opt, painter, widget)
+			return
+		super().drawControl(element, opt, painter, widget)
+
+	def _drawMenuItem(self, opt, painter, widget):
+		"""A popup menu item: an icon or a check mark, the label and the shortcut aligned right."""
+		r = opt.rect
+		enabled = bool(opt.state & QStyle.State_Enabled)
+		selected = enabled and bool(opt.state & QStyle.State_Selected)
+		painter.save()
+
+		if selected:
+			# The same highlight Fusion draws
+			highlight = opt.palette.color(QPalette.Highlight)
+			painter.fillRect(r, highlight)
+			painter.setPen(highlight.darker(125))
+			painter.drawRect(QRectF(r).adjusted(0.5, 0.5, -0.5, -0.5))
+
+		icon_col = QRect(r.left(), r.top(), self.MENU_ICON_COLUMN, r.height())
+		checked = opt.checkType != QStyleOptionMenuItem.NotCheckable and opt.checked
+		if not opt.icon.isNull():
+			if checked:
+				frame = QStyleOption(opt)
+				frame.rect = icon_col.adjusted(3, 3, -3, -3)
+				frame.state |= QStyle.State_Sunken
+				self.drawPrimitive(QStyle.PE_PanelButtonCommand, frame, painter, widget)
+			mode = QIcon.Disabled if not enabled else QIcon.Active if selected else QIcon.Normal
+			pixmap = opt.icon.pixmap(QSize(self.MENU_ICON_SIZE, self.MENU_ICON_SIZE), painter.device().devicePixelRatio(), mode)
+			pr = QRect(QPoint(0, 0), pixmap.deviceIndependentSize().toSize())
+			pr.moveCenter(icon_col.center())
+			painter.drawPixmap(pr.topLeft(), pixmap)
+		elif opt.checkType != QStyleOptionMenuItem.NotCheckable:
+			box = QStyleOptionButton()
+			box.initFrom(widget)
+			box.state = opt.state | (QStyle.State_On if checked else QStyle.State_Off)
+			box.palette = opt.palette
+			box.rect = QRect(0, 0, 14, 14)
+			box.rect.moveCenter(icon_col.center())
+			exclusive = opt.checkType == QStyleOptionMenuItem.Exclusive
+			self.drawPrimitive(QStyle.PE_IndicatorRadioButton if exclusive else QStyle.PE_IndicatorCheckBox, box, painter, widget)
+
+		color = opt.palette.color(QPalette.HighlightedText if selected else QPalette.Text)
+		flags = Qt.AlignVCenter | Qt.TextSingleLine
+		flags |= Qt.TextShowMnemonic if self.styleHint(QStyle.SH_UnderlineShortcut, opt, widget) else Qt.TextHideMnemonic
+		label, _, shortcut = opt.text.partition('\t')
+		font = QFont(opt.font)
+		font.setBold(opt.menuItemType == QStyleOptionMenuItem.DefaultItem)
+		painter.setFont(font)
+
+		right = r.right() - self.MENU_ITEM_PADDING
+		if opt.menuItemType == QStyleOptionMenuItem.SubMenu:
+			arrow = QStyleOption(opt)
+			arrow.rect = QRect(right - 8, r.top(), 8, r.height())
+			arrow.palette.setColor(QPalette.ButtonText, color)
+			self.drawPrimitive(QStyle.PE_IndicatorArrowRight, arrow, painter, widget)
+		elif shortcut:
+			# Shortcuts are a bit dimmer than the label
+			dim = QColor(color)
+			if not selected:
+				dim.setAlpha(150)
+			painter.setPen(dim)
+			painter.drawText(QRect(r.left(), r.top(), right - r.left(), r.height()), flags | Qt.AlignRight, shortcut)
+
+		painter.setPen(color)
+		label_rect = QRect(icon_col.right() + 1, r.top(), right - icon_col.right(), r.height())
+		painter.drawText(label_rect, flags | Qt.AlignLeft, label)
+		painter.restore()
 
 	def drawPrimitive(self, element, opt, painter, widget=None):
 		if element == QStyle.PE_FrameWindow and isinstance(widget, QMdiSubWindow):
