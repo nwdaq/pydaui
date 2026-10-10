@@ -8,6 +8,7 @@
 from PySide6.QtCore import *
 from PySide6.QtWidgets import *
 from PySide6.QtGui import *
+from PySide6.QtSvg import QSvgRenderer
 from superqt.fonticon import icon, spin, pulse
 
 
@@ -51,3 +52,65 @@ class Admonition(QFrame):
 		l.addWidget(i)
 		l.addWidget(QLabel(text), stretch=1)
 		self.setLayout(l)
+
+
+
+class _SvgIconEngine(QIconEngine):
+	"""Renders an SVG at whatever size and pixel density the icon is requested at."""
+
+	#: Opacity of the icon in the disabled mode.
+	DISABLED_OPACITY = 0.4
+
+	def __init__(self, renderer):
+		super().__init__()
+		self._renderer = renderer
+
+	def paint(self, painter, rect, mode, state):
+		if mode == QIcon.Disabled:
+			painter.save()
+			painter.setOpacity(painter.opacity() * self.DISABLED_OPACITY)
+		self._renderer.render(painter, QRectF(rect))
+		if mode == QIcon.Disabled:
+			painter.restore()
+
+	def pixmap(self, size, mode, state):
+		pixmap = QPixmap(size)
+		pixmap.fill(Qt.transparent)
+		painter = QPainter(pixmap)
+		self.paint(painter, QRect(QPoint(0, 0), size), mode, state)
+		painter.end()
+		return pixmap
+
+	def scaledPixmap(self, size, mode, state, scale):
+		# Render directly at the device resolution instead of scaling a smaller pixmap up.
+		pixmap = self.pixmap(size * scale, mode, state)
+		pixmap.setDevicePixelRatio(scale)
+		return pixmap
+
+	def clone(self):
+		return _SvgIconEngine(self._renderer)
+
+
+class SvgIcon(QIcon):
+	"""An icon rendered from an SVG, sharp at any size and pixel density.
+
+	``svg`` is either the SVG document itself (a string starting with ``<``, or bytes) or the path of an
+	SVG file (a string or a :class:`pathlib.Path`). Raises ``ValueError`` if it cannot be loaded.
+	"""
+
+	def __init__(self, svg):
+		if isinstance(svg, str) and svg.lstrip().startswith('<'):
+			svg = svg.encode()
+		if isinstance(svg, (bytes, bytearray)):
+			renderer = QSvgRenderer(QByteArray(bytes(svg)))
+			source = 'inline document'
+		else:
+			renderer = QSvgRenderer(str(svg))
+			source = str(svg)
+		if not renderer.isValid():
+			raise ValueError('cannot load the SVG icon (%s)' % source)
+		engine = _SvgIconEngine(renderer)
+		super().__init__(engine)
+		# The icon takes over the engine, keep the Python wrappers alive along with it.
+		self._engine = engine
+		self._renderer = renderer
