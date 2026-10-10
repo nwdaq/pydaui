@@ -1,12 +1,34 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import os
+from glob import glob
+from PyInstaller.utils.hooks import collect_all, copy_metadata
+
+src = os.path.join(SPECPATH, '..', 'src', 'pydaui')
+
+# Application resources. Only the CMSIS packs present in the tree are bundled
+datas = [
+	(os.path.join(src, 'assets'), 'pydaui/assets'),
+	(os.path.join(src, 'icons'), 'pydaui/icons'),
+] + [(pack, 'pydaui') for pack in glob(os.path.join(src, '*.pack'))]
+binaries = []
+hiddenimports = []
+
+# Packages discovered through entry points need their metadata and data files
+for package in ['fonticon_mdi7', 'pyocd', 'cmsis_pack_manager', 'pylink']:
+	d, b, h = collect_all(package)
+	datas += d
+	binaries += b
+	hiddenimports += h
+datas += copy_metadata('fonticon-materialdesignicons7')
+
 
 a = Analysis(
     ['../src/pydaui/__main__.py'],
     pathex=['../src'],
-    binaries=[],
-    datas=[],
-    hiddenimports=[],
+    binaries=binaries,
+    datas=datas,
+    hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
