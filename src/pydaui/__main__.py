@@ -106,6 +106,7 @@ class MainWindow(QMainWindow):
 		self._overlay.hide()
 
 		self._main_menu = MainMenu(self._connection)
+		self._main_menu.quitRequested.connect(self.close)
 		self.addToolBar(self._main_menu)
 		self.addToolBarBreak()
 

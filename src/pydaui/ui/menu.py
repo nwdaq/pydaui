@@ -16,10 +16,13 @@ from pydaui.ui.helpers import quit_icon
 
 class ApplicationMenu(QMenu):
 
+	quitRequested = Signal()
+
 	def __init__(self):
 		super().__init__(self.tr('&Application'))
 
-		self.addAction(quit_icon(), self.tr('&Quit'), QKeySequence(Qt.CTRL | Qt.Key_Q))
+		quit_action = self.addAction(quit_icon(), self.tr('&Quit'), QKeySequence(Qt.CTRL | Qt.Key_Q))
+		quit_action.triggered.connect(self.quitRequested)
 
 
 class DeviceMenu(QMenu):
@@ -36,6 +39,8 @@ class AboutMenu(QMenu):
 
 class MainMenu(QToolBar):
 
+	quitRequested = Signal()
+
 	def __init__(self, connection):
 		super().__init__()
 
@@ -45,7 +50,9 @@ class MainMenu(QToolBar):
 		self.setFloatable(False)
 
 		self._menu = QMenuBar()
-		self._menu.addMenu(ApplicationMenu())
+		self._app_menu = ApplicationMenu()
+		self._app_menu.quitRequested.connect(self.quitRequested)
+		self._menu.addMenu(self._app_menu)
 		self._menu.addMenu(DeviceMenu())
 		self._menu.addMenu(AboutMenu())
 
