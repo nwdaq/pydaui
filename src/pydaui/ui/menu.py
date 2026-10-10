@@ -10,7 +10,7 @@ from PySide6.QtWidgets import *
 from PySide6.QtGui import *
 from superqt.fonticon import icon, spin, pulse
 
-from pydaui.connection.service_proxy import *
+from pydaui.connection import *
 
 
 class ApplicationMenu(QMenu):
@@ -35,8 +35,10 @@ class AboutMenu(QMenu):
 
 class MainMenu(QToolBar):
 
-	def __init__(self):
+	def __init__(self, connection):
 		super().__init__()
+
+		self._connection = connection
 
 		self.setMovable(False)
 		self.setFloatable(False)
@@ -70,10 +72,9 @@ class MainMenu(QToolBar):
 
 		self._connectionChanged(None)
 
-		self._sp = ServiceProxy()
-		self._sp.connectionChanged.connect(self._connectionChanged)
+		self._connection.connectionChanged.connect(self._connectionChanged)
 
-	@Slot(str)
+	@Slot(object)
 	def _connectionChanged(self, uri):
 		if uri:
 			self._state_btn.setText(uri)
@@ -86,4 +87,4 @@ class MainMenu(QToolBar):
 
 	@Slot()
 	def _disconnectClicked(self):
-		self._sp.disconnectUri()
+		self._connection.disconnectUri()

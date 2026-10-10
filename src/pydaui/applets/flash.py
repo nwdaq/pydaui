@@ -15,7 +15,7 @@ from PySide6.QtWidgets import *
 from PySide6.QtGui import *
 from superqt.fonticon import icon, spin, pulse
 
-from pydaui.connection.service_proxy import *
+from pydaui.connection import *
 
 
 class DDRegion(QFrame):
@@ -238,9 +238,9 @@ class AppletWindow(QMdiSubWindow):
 
 class FlashVolumeList(AppletWindow):
 
-	def __init__(self):
+	def __init__(self, connection):
 		super().__init__()
-		self._service_proxy = ServiceProxy()
+		self._connection = connection
 
 		self.setWidget(FlashVolume())
 
