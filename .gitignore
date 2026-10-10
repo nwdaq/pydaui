@@ -6,3 +6,6 @@ build/
 dist/
 .pdm-python
 .venv/
+
+# CMSIS device packs are not tracked, except those already in the repository
+*.pack

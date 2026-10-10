@@ -73,6 +73,7 @@ class SwdTab(ConnectWindowTab):
 	#: The products a target can be selected as. SWD does not identify the product, it must be known.
 	products = [
 		Product('v35v-ctrl', '1.0.0', 'STM32G491CCUx', 'Keil.STM32G4xx_DFP.2.0.0.pack'),
+		Product('nwdaq-main-hh1', '1.0.0', 'STM32U575VITx', 'Keil.STM32U5xx_DFP.3.2.0.pack'),
 	]
 
 	def __init__(self, connection, parent=None):
