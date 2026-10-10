@@ -141,7 +141,7 @@ class UsbTab(ConnectWindowTab):
 class _ProbeWorker(QObject):
 	"""Runs :meth:`Connection.probe` for one URI off the GUI thread and reports the result via a signal.
 
-	The blocking probe (opening a serial port and waiting for advertisements) must not run on the GUI
+	The blocking probe (e.g. opening a serial port and waiting for advertisements) must not run on the GUI
 	thread, so it runs in a daemon thread; the ``done``/``failed`` signals are delivered back on the GUI
 	thread. The originating tree item is carried through untouched so the slot knows where to append.
 	"""
@@ -156,7 +156,7 @@ class _ProbeWorker(QObject):
 		self._item = item
 
 	def start(self):
-		threading.Thread(target=self._run, name='serial-probe', daemon=True).start()
+		threading.Thread(target=self._run, name='probe', daemon=True).start()
 
 	def _run(self):
 		try:
@@ -305,6 +305,94 @@ class SerialTab(ConnectWindowTab):
 		return item.data(0, self.URI_ROLE)
 
 
+class BleTab(ConnectWindowTab):
+	"""Connect to a bonded BLE device over the rible transport (RemoteInterfaces over BLE).
+
+	The device URI carries no interface, so connecting walks the RemoteInterfaces the device exports
+	(they are logged) and opens a session on the root interface, if the device has one.
+	"""
+
+	NAME = 'BLE'
+	ICON = 'mdi7.bluetooth'
+	ENABLED = True
+
+	#: The BLE transport this tab connects over.
+	SCHEME = 'rible'
+
+	def __init__(self, connection, parent=None):
+		super().__init__(connection, parent=parent)
+		# Keep worker references alive until their signal has been delivered.
+		self._workers = set()
+		self._createUi()
+		self._refresh()
+
+	def _createUi(self):
+		l = QVBoxLayout()
+		self.setLayout(l)
+		l.addWidget(QLabel(
+			'Connect to a device over Bluetooth Low Energy. Only bonded devices are listed,\n'
+			'pair and trust the device first (e.g. with bluetoothctl).\n\n'
+			'Select the device to connect to:'
+		))
+
+		row = QHBoxLayout()
+		cb = QComboBox()
+		cb.setIconSize(QSize(24, 24))
+		row.addWidget(cb, 1)
+		self._device_cb = cb
+
+		btn = QToolButton()
+		btn.setAutoRaise(True)
+		btn.setToolTip('Refresh the bonded devices')
+		btn.setIcon(icon('mdi7.refresh', color='#888', scale_factor=1))
+		btn.clicked.connect(self._refresh)
+		row.addWidget(btn)
+		self._refresh_btn = btn
+		l.addLayout(row)
+
+		self._status = QLabel()
+		l.addWidget(self._status)
+		l.addStretch(1)
+
+	@staticmethod
+	def _describe(uri):
+		"""The combo box label for a device URI: its name (if it has one) and address."""
+		parsed = parse_uri(uri)
+		name = parsed.get('name')
+		return '%s [%s]' % (name, parsed.host) if name else parsed.host
+
+	@Slot()
+	def _refresh(self):
+		self._refresh_btn.setEnabled(False)
+		self._status.setText('Looking for bonded devices...')
+		worker = _ProbeWorker(self._connection, '%s://' % self.SCHEME, None)
+		worker.done.connect(self._onProbeDone)
+		worker.failed.connect(self._onProbeFailed)
+		self._workers.add(worker)
+		worker.start()
+
+	@Slot(object, list)
+	def _onProbeDone(self, item, results):
+		self._finishProbe()
+		self._device_cb.clear()
+		for uri in results:
+			self._device_cb.addItem(icon('mdi7.bluetooth', color='#008', scale_factor=1), self._describe(uri), uri)
+		self._status.setText('' if results else 'No bonded devices found.')
+
+	@Slot(object, str)
+	def _onProbeFailed(self, item, message):
+		self._finishProbe()
+		self._device_cb.clear()
+		self._status.setText('Listing the bonded devices failed: %s' % message)
+
+	def _finishProbe(self):
+		self._refresh_btn.setEnabled(True)
+		self._workers.discard(self.sender())
+
+	def uri(self):
+		return self._device_cb.currentData()
+
+
 class ConnectWindow(QDialog):
 
 	def __init__(self, connection, parent=None):
@@ -374,9 +462,18 @@ class ConnectWindow(QDialog):
 	@Slot()
 	def _connectClicked(self):
 		uri = self._tabs.currentWidget().uri()
-		if uri:
+		if not uri:
+			return
+		# Connecting may take a while (e.g. a BLE device connects and its interfaces are walked).
+		QApplication.setOverrideCursor(Qt.WaitCursor)
+		try:
 			self._connection.connectUri(uri)
-			self.close()
+		except Exception as e:
+			QApplication.restoreOverrideCursor()
+			QMessageBox.warning(self, 'Connect', 'Connecting to %s failed:\n\n%s' % (uri, e))
+			return
+		QApplication.restoreOverrideCursor()
+		self.close()
 
 	@Slot()
 	def _finished(self):

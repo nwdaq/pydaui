@@ -35,6 +35,7 @@ class PyDauiConnection(QObject):
 		self._owns_nbus = False
 		self._socket = None
 		self._uri = None
+		self._interfaces = []
 		self._children = []
 
 	def connectUri(self, uri):
@@ -52,7 +53,27 @@ class PyDauiConnection(QObject):
 		self._nbus = nbus
 		self._owns_nbus = True
 		self._uri = uri
+		self._interfaces = self._discoverInterfaces()
 		self.connectionChanged.emit(uri)
+
+	def _discoverInterfaces(self):
+		"""Walk the interfaces the target exports (RemoteInterfaces over rible, the virtual ones over swd)
+		and log them. Transports without named interfaces have nothing to discover."""
+		try:
+			interfaces = self._nbus.walk()
+		except pynbus2.NbusError as e:
+			# Also raised by transports which do not support discovery.
+			self._logger.info(f'no interfaces discovered: {e}')
+			return []
+		except Exception as e:
+			# Stay connected, the connection itself is fine.
+			self._logger.warning(f'interface discovery failed: {e}')
+			return []
+		self._logger.info(f'{len(interfaces)} interface(s) discovered')
+		for name, desc in interfaces:
+			self._logger.info(f'interface {name!r}: protocol {desc.get("p")}, version {desc.get("pv", "(none)")}, '
+			                  f'mtu {desc.get("mtu")}, max sessions {desc.get("ms")}')
+		return interfaces
 
 	def disconnectUri(self):
 		if not self.connected:
@@ -64,12 +85,15 @@ class PyDauiConnection(QObject):
 		self._children = []
 
 		self._logger.info(f'disconnecting from {self._uri}')
-		self._socket.close()
 		if self._owns_nbus:
+			# Closes all its sockets too.
 			self._nbus.close()
+		else:
+			self._socket.close()
 		self._nbus = None
 		self._socket = None
 		self._uri = None
+		self._interfaces = []
 		self.connectionChanged.emit(None)
 
 	def connectSide(self, id, ep):
@@ -118,6 +142,11 @@ class PyDauiConnection(QObject):
 	@property
 	def uri(self):
 		return self._uri
+
+	@property
+	def interfaces(self):
+		"""The (name, desc) tuples of the interfaces discovered when connecting, empty if there are none."""
+		return self._interfaces
 
 	@property
 	def nbus(self):
