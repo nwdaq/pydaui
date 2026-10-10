@@ -178,7 +178,6 @@ class DauiButton(QPushButton):
 		super().__init__()
 
 		if type(btn_icon) == str:
-			print('tu som')
 			btn_icon = icon(f'mdi7.{btn_icon}', color=color, scale_factor=1)
 		self.setIcon(btn_icon)
 
