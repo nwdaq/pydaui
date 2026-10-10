@@ -25,6 +25,7 @@ from superqt.fonticon import icon, spin, pulse
 from pydaui.connection import *
 from pydaui.ui.menu import *
 from pydaui.ui.connect_window import ConnectWindow
+from pydaui.ui.style import DauiStyle
 from pydaui.applets.flash import *
 from pydaui.applets.conf import ConfTreeWindow, PROTOCOL as CONF_PROTOCOL
 
@@ -170,7 +171,7 @@ class DauiApplication(QApplication):
 	def __init__(self, argv):
 		super().__init__(argv)
 
-		# self.setStyle('material')
+		self.setStyle(DauiStyle())
 
 		self._connection = PyDauiConnection()
 
