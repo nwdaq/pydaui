@@ -26,6 +26,7 @@ from pydaui.connection import *
 from pydaui.ui.menu import *
 from pydaui.ui.connect_window import ConnectWindow
 from pydaui.ui.style import DauiStyle
+from pydaui.settings import Settings
 from pydaui.applets.flash import *
 from pydaui.applets.conf import ConfTreeWindow, PROTOCOL as CONF_PROTOCOL
 
@@ -88,12 +89,16 @@ class MdiArea(QMdiArea):
 
 class MainWindow(QMainWindow):
 
-	def __init__(self, connection):
+	def __init__(self, connection, settings):
 		super().__init__()
 
 		self._connection = connection
+		self._settings = settings
 
 		self.resize(QSize(800, 600))
+		geometry = self._settings.getBytes('ui.geometry')
+		if geometry is not None:
+			self.restoreGeometry(geometry)
 
 		# Gray overlay to show when a modal is active
 		self._overlay = QWidget(self)
@@ -161,6 +166,10 @@ class MainWindow(QMainWindow):
 		super().resizeEvent(event)
 		self._overlay.resize(self.size())
 
+	def closeEvent(self, event):
+		self._settings.setBytes('ui.geometry', self.saveGeometry())
+		super().closeEvent(event)
+
 	@property
 	def overlay(self):
 		return self._overlay
@@ -170,12 +179,15 @@ class DauiApplication(QApplication):
 
 	def __init__(self, argv):
 		super().__init__(argv)
+		# Determines the settings location, eg. ~/.config/pydaui/
+		self.setApplicationName('pydaui')
 
 		self.setStyle(DauiStyle())
 
+		self._settings = Settings()
 		self._connection = PyDauiConnection()
 
-		self._main_window = MainWindow(self._connection)
+		self._main_window = MainWindow(self._connection, self._settings)
 		self._main_window.show()
 
 		self._connect_window = ConnectWindow(self._connection, parent=self._main_window)
@@ -183,6 +195,7 @@ class DauiApplication(QApplication):
 	def exec(self):
 		super().exec()
 		self._connection.disconnectUri()
+		self._settings.save()
 
 
 
