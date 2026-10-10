@@ -11,7 +11,7 @@ from PySide6.QtGui import *
 from superqt.fonticon import icon, spin, pulse
 
 from pydaui.connection import *
-from pydaui.ui.helpers import quit_icon
+from pydaui.ui.icons import Icons
 
 
 class ApplicationMenu(QMenu):
@@ -21,7 +21,7 @@ class ApplicationMenu(QMenu):
 	def __init__(self):
 		super().__init__(self.tr('&Application'))
 
-		quit_action = self.addAction(quit_icon(), self.tr('&Quit'), QKeySequence(Qt.CTRL | Qt.Key_Q))
+		quit_action = self.addAction(Icons.quit(), self.tr('&Quit'), QKeySequence(Qt.CTRL | Qt.Key_Q))
 		quit_action.triggered.connect(self.quitRequested)
 
 

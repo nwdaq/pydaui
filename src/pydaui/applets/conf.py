@@ -23,7 +23,7 @@ from PySide6.QtWidgets import *
 from PySide6.QtGui import *
 
 from pydaui.applets.flash import AppletWindow, DauiButton
-from pydaui.ui.helpers import cancel_icon, expand_icon, collapse_icon, refresh_icon, save_icon
+from pydaui.ui.icons import Icons
 
 
 # enum conf_type (see services/interfaces/conf.h)
@@ -490,8 +490,8 @@ class ConfTreeWidget(QTreeWidget):
 		self._hover = QPersistentModelIndex()
 		# The lowercase filter text, empty when not filtering.
 		self._filter = ''
-		self._expand_icon = expand_icon()
-		self._collapse_icon = collapse_icon()
+		self._expand_icon = Icons.expand()
+		self._collapse_icon = Icons.collapse()
 		# Track the mouse to show a pointing hand over the expand/collapse indicators and to highlight
 		# the row under it. The row under a still mouse changes when the tree scrolls too.
 		self.setMouseTracking(True)
@@ -913,11 +913,11 @@ class ConfTree(QWidget):
 		self._job = None
 
 		self._tb = QToolBar()
-		self._reload = DauiButton(self.tr('Reload'), refresh_icon())
+		self._reload = DauiButton(self.tr('Reload'), Icons.refresh())
 		self._reload.setToolTip(self.tr('Load the saved configuration on the device and show it'))
 		self._reload.clicked.connect(lambda: self._runJob('load'))
 		self._tb.addWidget(self._reload)
-		self._save = DauiButton(self.tr('Save'), save_icon())
+		self._save = DauiButton(self.tr('Save'), Icons.save())
 		self._save.setToolTip(self.tr('Save the configuration on the device'))
 		self._save.clicked.connect(lambda: self._runJob('save'))
 		self._tb.addWidget(self._save)
@@ -937,7 +937,7 @@ class ConfTree(QWidget):
 		self._filter.setStyleSheet('QLineEdit { background-color: white; }')
 		self._filter.textChanged.connect(self._tree.setFilter)
 		self._tb.addWidget(self._filter)
-		cancel = DauiButton(btn_icon=cancel_icon())
+		cancel = DauiButton(btn_icon=Icons.cancel())
 		cancel.setToolTip(self.tr('Cancel the filter'))
 		cancel.clicked.connect(self._filter.clear)
 		self._tb.addWidget(cancel)
