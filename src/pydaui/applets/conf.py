@@ -988,20 +988,17 @@ class ConfTree(QWidget):
 
 
 class ConfTreeWindow(AppletWindow):
-	"""The configuration tree of the topmost interface speaking the conf protocol on the connected device.
+	"""The configuration tree served by an interface speaking the conf protocol on the connected device.
 
 	It opens its own side connection to the interface, closed with the window. The window closes when
 	the device is disconnected.
 	"""
 
-	def __init__(self, connection):
+	def __init__(self, connection, name):
 		super().__init__()
 		self._logger = logging.getLogger(self.__class__.__name__)
 		self.setAttribute(Qt.WA_DeleteOnClose)
 
-		name = connection.findInterface(PROTOCOL)
-		if name is None:
-			raise LookupError('the device exports no interface speaking the %s protocol' % PROTOCOL)
 		self._logger.info(f'opening the configuration tree on interface {name!r}')
 		self._side = connection.connectSide(name, 0)
 		self._connection = connection

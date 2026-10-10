@@ -25,10 +25,10 @@ from superqt.fonticon import icon, spin, pulse
 from pydaui.connection import *
 from pydaui.ui.menu import *
 from pydaui.ui.connect_window import ConnectWindow
+from pydaui.ui.ribbon import Ribbon
 from pydaui.ui.style import DauiStyle
 from pydaui.settings import Settings
 from pydaui.applets.flash import *
-from pydaui.applets.conf import ConfTreeWindow, PROTOCOL as CONF_PROTOCOL
 
 LOG_FORMAT = f"""[{Style.BRIGHT}{Fore.WHITE}%(asctime)s{Style.NORMAL}] {Fore.BLUE}{Style.BRIGHT}%(levelname)-10s{Fore.YELLOW}{Style.NORMAL}%(module)s:%(name)s: {Style.RESET_ALL}%(message)s"""
 
@@ -110,55 +110,22 @@ class MainWindow(QMainWindow):
 		self.addToolBar(self._main_menu)
 		self.addToolBarBreak()
 
-
-		self.tb = QToolBar()
-
-		self.rib = QTabWidget()
-		self.rib.setTabPosition(QTabWidget.North)
-
-		self.home_tab = QToolBar()
-		self.home_tab.setIconSize(QSize(30, 30))
-
-		self.tb1 = QToolButton()
-		self.tb1.setIcon(icon('mdi7.cog-outline', color='gray', scale_factor=1))
-		self.tb1.setText('Configuration tree')
-		self.tb1.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
-		self.tb1.clicked.connect(self._openConfTree)
-
-		self.tb2 = QToolButton()
-		self.tb2.setIcon(icon('mdi7.cog-outline', color='gray', scale_factor=1))
-		self.tb2.setText('New')
-		self.tb2.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
-
-		self.home_tab.addWidget(self.tb1)
-		self.home_tab.addWidget(self.tb2)
-		self.rib.addTab(self.home_tab, 'Configuration')
-
-		self.insert_tab = QWidget()
-		self.rib.addTab(self.insert_tab, 'Insert')
-		self.rib.setTabIcon(0, icon('mdi7.cog', color='#008', scale_factor=1))
-
-		self.tb.addWidget(self.rib)
-
-		self.addToolBar(self.tb)
+		self._ribbon = Ribbon(self._connection, self)
+		self._ribbon.appletRequested.connect(self._openApplet)
+		# The arrangement of the ribbon panels, restored once they are all added.
+		state = self._settings.getBytes('ui.state')
+		if state is not None:
+			self.restoreState(state)
 
 		self._mdi_area = MdiArea()
 		self.setCentralWidget(self._mdi_area)
 
-		self._connection.connectionChanged.connect(self._connectionChanged)
-		self._connectionChanged(self._connection.uri)
-
 	@Slot(object)
-	def _connectionChanged(self, uri):
-		# The configuration tree needs an interface speaking the conf protocol.
-		self.tb1.setEnabled(self._connection.findInterface(CONF_PROTOCOL) is not None)
-
-	@Slot()
-	def _openConfTree(self):
+	def _openApplet(self, instance):
 		try:
-			window = ConfTreeWindow(self._connection)
+			window = instance.open(self._connection)
 		except Exception as e:
-			QMessageBox.warning(self, 'Configuration tree', 'Cannot open the configuration tree:\n\n%s' % e)
+			QMessageBox.warning(self, instance.applet.title, 'Cannot open %s:\n\n%s' % (instance.applet.title, e))
 			return
 		self._mdi_area.addSubWindow(window)
 		window.show()
@@ -169,6 +136,7 @@ class MainWindow(QMainWindow):
 
 	def closeEvent(self, event):
 		self._settings.setBytes('ui.geometry', self.saveGeometry())
+		self._settings.setBytes('ui.state', self.saveState())
 		super().closeEvent(event)
 
 	@property

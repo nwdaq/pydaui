@@ -17,6 +17,9 @@ from superqt.fonticon import icon, spin, pulse
 
 from pydaui.connection import *
 
+#: The protocol name of the interfaces this applet talks to.
+PROTOCOL = 'flash'
+
 
 class DDRegion(QFrame):
 
@@ -237,10 +240,12 @@ class AppletWindow(QMdiSubWindow):
 
 class FlashVolumeList(AppletWindow):
 
-	def __init__(self, connection):
+	def __init__(self, connection, name):
 		super().__init__()
+		self.setAttribute(Qt.WA_DeleteOnClose)
 		self._connection = connection
 
+		self.setWindowTitle(f'Flash ({name})')
 		self.setWidget(FlashVolume())
 
 
