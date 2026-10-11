@@ -1,0 +1,89 @@
+name: Build with pyside6-android-deploy for Android
+
+on:
+  push:
+    branches: [ "master", "develop", "feature/android-build" ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout the repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    # buildozer and the cp311 PySide6 Android wheels need Python 3.11
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Set up Java 17
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: "17"
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y autoconf automake libtool libltdl-dev pkg-config \
+          zlib1g-dev libncurses-dev libffi-dev libssl-dev unzip zip cmake autopoint gettext
+        pip install PySide6==6.8.2.1 jinja2 pkginfo tqdm buildozer==1.5.0 cython==0.29.33 setuptools
+
+    # The Android SDK downloaded by buildozer and the NDK downloaded by pyside6-android-deploy
+    - name: Cache the Android SDK and NDK
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.buildozer/android/platform
+          ~/.pyside6_android_deploy
+        key: android-sdk-ndk-${{ hashFiles('packaging/android/build.sh') }}
+        restore-keys: android-sdk-ndk-
+
+    - name: Build
+      shell: bash
+      env:
+        # Do not build the native cbor2 extension, the pure Python one is used
+        CBOR2_BUILD_C_EXTENSION: "0"
+        # python-for-android shows only the tail of a failed command otherwise
+        P4A_FULL_DEBUG: "1"
+      run: |
+        mkdir -p build
+        packaging/android/build.sh 2>&1 | tee build/android-build.log
+        echo "ARTIFACT_NAME=pydaui-`git describe --tags --always`-android" >> $GITHUB_ENV
+
+    - name: Show the gradle error
+      if: failure()
+      run: |
+        dist=build/android/.buildozer/android/platform/build-arm64-v8a/dists/pydaui
+        if [ -x $dist/gradlew ]; then
+          (cd $dist && ./gradlew assembleDebug --stacktrace) 2>&1 | tee build/gradle.log || true
+          grep -n -A40 "What went wrong" build/gradle.log || true
+        fi
+
+    - name: Upload the build logs
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: android-build-logs
+        path: |
+          build/android-build.log
+          build/gradle.log
+        if-no-files-found: ignore
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        path: |
+          build/android/**/*.apk
+          !build/android/.buildozer/**
+          !build/android/deployment/**
+        name: ${{ env.ARTIFACT_NAME }}
+        if-no-files-found: error

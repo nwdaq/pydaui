@@ -23,6 +23,8 @@ import threading
 import pynbus2
 from PySide6.QtCore import QObject, Signal, Slot
 
+from pydaui import bluetooth
+
 
 class SocketConnection:
 	"""What the protocol clients (e.g. the flash and conf clients) need of a connection, over a bare
@@ -78,8 +80,17 @@ class PyDauiConnection(QObject):
 		if self.connected:
 			self.disconnectUri()
 		self._connecting = uri
-		self._attempt = object()
-		threading.Thread(target=self._openAsync, args=(self._attempt, uri), name='connect', daemon=True).start()
+		self._attempt = attempt = object()
+
+		def start():
+			threading.Thread(target=self._openAsync, args=(attempt, uri), name='connect', daemon=True).start()
+
+		if bluetooth.usesBluetooth(uri):
+			# The user may be asked first, the attempt fails like any other when they refuse.
+			bluetooth.withPermission(self, start,
+			                         lambda: self._finishAsync(attempt, uri, pynbus2.NbusError(bluetooth.DENIED)))
+		else:
+			start()
 
 	def cancelConnect(self):
 		"""Abandon the connection :meth:`connectUriAsync` is making, it is closed when it is made."""

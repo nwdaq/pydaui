@@ -17,7 +17,7 @@ from superqt.fonticon import icon, spin, pulse
 
 from pynbus2.uri import parse_uri, split_serial_path
 
-from pydaui import products
+from pydaui import bluetooth, products
 from pydaui.connection import *
 from pydaui.ui.helpers import Admonition
 
@@ -326,7 +326,7 @@ class SerialTab(ConnectWindowTab):
 
 
 class BleTab(ConnectWindowTab):
-	"""Connect to a bonded BLE device over the rible transport (RemoteInterfaces over BLE).
+	"""Connect to a BLE device over the rible transport (RemoteInterfaces over BLE).
 
 	The device URI carries no interface, so connecting walks the RemoteInterfaces the device exports
 	(they are logged) and opens a session on the root interface, if the device has one.
@@ -349,11 +349,14 @@ class BleTab(ConnectWindowTab):
 	def _createUi(self):
 		l = QVBoxLayout()
 		self.setLayout(l)
-		l.addWidget(QLabel(
-			'Connect to a device over Bluetooth Low Energy. Only bonded devices are listed,\n'
-			'pair and trust the device first (e.g. with bluetoothctl).\n\n'
-			'Select the device to connect to:'
-		))
+		if bluetooth.scans():
+			howto = ('Nearby devices are listed, the device is paired when connecting\n'
+			         'to it the first time.')
+		else:
+			howto = ('Only bonded devices are listed, pair and trust the device first\n'
+			         '(e.g. with bluetoothctl).')
+		l.addWidget(QLabel('Connect to a device over Bluetooth Low Energy. %s\n\n'
+		                   'Select the device to connect to:' % howto))
 
 		row = QHBoxLayout()
 		cb = QComboBox()
@@ -363,7 +366,7 @@ class BleTab(ConnectWindowTab):
 
 		btn = QToolButton()
 		btn.setAutoRaise(True)
-		btn.setToolTip('Refresh the bonded devices')
+		btn.setToolTip('Refresh the devices')
 		btn.setIcon(icon('mdi7.refresh', color='#888', scale_factor=1))
 		btn.clicked.connect(self._refresh)
 		row.addWidget(btn)
@@ -384,7 +387,15 @@ class BleTab(ConnectWindowTab):
 	@Slot()
 	def _refresh(self):
 		self._refresh_btn.setEnabled(False)
-		self._status.setText('Looking for bonded devices...')
+		bluetooth.withPermission(self, self._probe, self._permissionDenied)
+
+	def _permissionDenied(self):
+		self._refresh_btn.setEnabled(True)
+		self._device_cb.clear()
+		self._status.setText(bluetooth.DENIED)
+
+	def _probe(self):
+		self._status.setText('Looking for devices...' if bluetooth.scans() else 'Looking for bonded devices...')
 		worker = _ProbeWorker(self._connection, '%s://' % self.SCHEME, None)
 		worker.done.connect(self._onProbeDone)
 		worker.failed.connect(self._onProbeFailed)
@@ -397,13 +408,13 @@ class BleTab(ConnectWindowTab):
 		self._device_cb.clear()
 		for uri in results:
 			self._device_cb.addItem(icon('mdi7.bluetooth', color='#008', scale_factor=1), self._describe(uri), uri)
-		self._status.setText('' if results else 'No bonded devices found.')
+		self._status.setText('' if results else 'No devices found.' if bluetooth.scans() else 'No bonded devices found.')
 
 	@Slot(object, str)
 	def _onProbeFailed(self, item, message):
 		self._finishProbe()
 		self._device_cb.clear()
-		self._status.setText('Listing the bonded devices failed: %s' % message)
+		self._status.setText('Listing the devices failed: %s' % message)
 
 	def _finishProbe(self):
 		self._refresh_btn.setEnabled(True)
@@ -411,6 +422,23 @@ class BleTab(ConnectWindowTab):
 
 	def uri(self):
 		return self._device_cb.currentData()
+
+
+class _TabScrollArea(QScrollArea):
+	"""Scrolls a connect window tab when the window is shrunk to a small screen.
+
+	A plain QScrollArea caps its size hint, this one asks for the whole tab so the window keeps its natural
+	size wherever it fits.
+	"""
+
+	def __init__(self, tab):
+		super().__init__()
+		self.setWidget(tab)
+		self.setWidgetResizable(True)
+		self.setFrameShape(QFrame.NoFrame)
+
+	def sizeHint(self):
+		return self.widget().sizeHint() + QSize(2 * self.frameWidth(), 2 * self.frameWidth())
 
 
 class ConnectWindow(QDialog):
@@ -435,6 +463,23 @@ class ConnectWindow(QDialog):
 		super().open()
 		self.parent().updateOverlay()
 
+	def setVisible(self, visible):
+		if visible:
+			self._fitToScreen()
+		super().setVisible(visible)
+
+	def _fitToScreen(self):
+		"""Size the window to fit the screen when it is smaller (e.g. a tablet in portrait).
+
+		Its preferred size is used otherwise, not the one Qt gives a window by default, capped to 2/3 of
+		the screen. Done before the window is shown, QDialog then centres it over the main window within
+		the screen. Moving it once shown leaves it drawn elsewhere than it takes the touches on Android.
+		"""
+		parent = self.parentWidget() or self
+		# Not known before the window is shown, the frame of the main window is the same kind.
+		frame = parent.frameGeometry().size() - parent.size()
+		self.resize(self.sizeHint().boundedTo(parent.screen().availableGeometry().size() - frame))
+
 	def _createUi(self):
 		# self.resize(QSize(400, 300))
 		self.setWindowTitle('Connect')
@@ -449,7 +494,7 @@ class ConnectWindow(QDialog):
 		# One tab per ConnectWindowTab subclass; each carries its own name, icon and enabled state.
 		for i, tab_cls in enumerate(ConnectWindowTab.__subclasses__()):
 			tab = tab_cls(self._connection)
-			self._tabs.addTab(tab, tab_cls.NAME)
+			self._tabs.addTab(_TabScrollArea(tab), tab_cls.NAME)
 			self._tabs.setTabIcon(i, tab_cls.tabIcon())
 			self._tabs.setTabEnabled(i, tab_cls.ENABLED)
 
@@ -493,7 +538,7 @@ class ConnectWindow(QDialog):
 
 	@Slot()
 	def _connectClicked(self):
-		uri = self._tabs.currentWidget().uri()
+		uri = self._tabs.currentWidget().widget().uri()
 		if not uri:
 			return
 		self._error.hide()
