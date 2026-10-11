@@ -23,6 +23,7 @@ from PySide6.QtSvg import QSvgRenderer
 from superqt.fonticon import icon, spin, pulse
 # from fonticon_fa6 import FA6S
 
+import pydaui
 from pydaui.applets import conf
 from pydaui.connection import *
 from pydaui.ui.menu import *
@@ -63,7 +64,8 @@ class ConfigTree(QTreeWidget):
 class MdiArea(QMdiArea):
 
 	#: The doodle tile repeated over the background, at :attr:`BACKGROUND_OPACITY` over the default colour.
-	BACKGROUND_TILE = Path(__file__).resolve().parent / 'assets' / 'doodle-tile.svg'
+	#: Resolved from the package, as this script is moved out of it when frozen.
+	BACKGROUND_TILE = Path(pydaui.__file__).resolve().parent / 'assets' / 'doodle-tile.svg'
 	BACKGROUND_OPACITY = 0.1
 
 	def __init__(self):
