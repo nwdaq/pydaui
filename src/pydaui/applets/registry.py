@@ -82,7 +82,7 @@ PANELS = (
 APPLETS = (
 	Applet(conf.PROTOCOL, 'Configuration tree', Icons.conf, 'Configuration', conf.ConfTreeWindow),
 	Applet(flash.PROTOCOL, 'Flash', Icons.storage, 'Storage', flash.FlashWindow),
-	Applet(update.PROTOCOL, 'plumCore updates', Icons.update, 'System', update.UpdateWindow, probe=update.probe,
+	Applet(update.PROTOCOL, 'Update', Icons.update, 'System', update.UpdateWindow, probe=update.probe,
 	       settings=True),
 )
 
