@@ -48,12 +48,35 @@ jobs:
         restore-keys: android-sdk-ndk-
 
     - name: Build
+      shell: bash
       env:
         # Do not build the native cbor2 extension, the pure Python one is used
         CBOR2_BUILD_C_EXTENSION: "0"
+        # python-for-android shows only the tail of a failed command otherwise
+        P4A_FULL_DEBUG: "1"
       run: |
-        packaging/android/build.sh
+        mkdir -p build
+        packaging/android/build.sh 2>&1 | tee build/android-build.log
         echo "ARTIFACT_NAME=pydaui-`git describe --tags --always`-android" >> $GITHUB_ENV
+
+    - name: Show the gradle error
+      if: failure()
+      run: |
+        dist=build/android/.buildozer/android/platform/build-arm64-v8a/dists/pydaui
+        if [ -x $dist/gradlew ]; then
+          (cd $dist && ./gradlew assembleDebug --stacktrace) 2>&1 | tee build/gradle.log || true
+          grep -n -A40 "What went wrong" build/gradle.log || true
+        fi
+
+    - name: Upload the build logs
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: android-build-logs
+        path: |
+          build/android-build.log
+          build/gradle.log
+        if-no-files-found: ignore
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4

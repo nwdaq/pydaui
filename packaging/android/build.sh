@@ -81,8 +81,11 @@ spec.read(path)
 app = spec['app']
 app['requirements'] += ',' + ','.join(requirements)
 app['source.include_exts'] = 'py,png,jpg,svg,json,qml,js'
-app['android.permissions'] = ','.join(p for p in [app.get('android.permissions', ''),
-	'android.permission.INTERNET', 'android.permission.ACCESS_NETWORK_STATE'] if p)
+permissions = [p.strip() for p in app.get('android.permissions', '').split(',') if p.strip()]
+for p in ['android.permission.INTERNET', 'android.permission.ACCESS_NETWORK_STATE']:
+	if p not in permissions:
+		permissions.append(p)
+app['android.permissions'] = ','.join(permissions)
 app['android.minapi'] = '28'
 app['android.api'] = '34'
 app['android.accept_sdk_license'] = 'True'
