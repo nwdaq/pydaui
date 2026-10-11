@@ -50,7 +50,9 @@ class Admonition(QFrame):
 		i = QLabel()
 		i.setPixmap(ad_icon.pixmap(24, 24))
 		l.addWidget(i)
-		l.addWidget(QLabel(text), stretch=1)
+		label = QLabel(text)
+		label.setWordWrap(True)
+		l.addWidget(label, stretch=1)
 		self.setLayout(l)
 
 
@@ -115,3 +117,134 @@ class SvgIcon(QIcon):
 		self._engine = engine
 		self._renderer = renderer
 
+
+
+class DauiButton(QPushButton):
+
+	def __init__(self, text=None, btn_icon=None, color='#000'):
+		super().__init__()
+
+		if type(btn_icon) == str:
+			btn_icon = icon(f'mdi7.{btn_icon}', color=color, scale_factor=1)
+		self.setIcon(btn_icon)
+
+		if text:
+			self.setText(text)
+
+		self.setIconSize(QSize(24, 24))
+
+
+class AppletWindow(QMdiSubWindow):
+
+	def __init__(self, parent=None):
+		super().__init__(parent=parent)
+
+	def moveEvent(self, event):
+		super().moveEvent(event)
+
+		if self.x() < 20:
+			self.move(0, self.y())
+		elif (self.x() + self.width()) >= (self.parent().width() - 20):
+			self.move(self.parent().width() - self.width(), self.y())
+
+		if self.y() < 20:
+			self.move(self.x(), 0)
+		elif (self.y() + self.height()) >= (self.parent().height() - 20):
+			self.move(self.x(), self.parent().height() - self.height())
+
+
+class StyledTreeWidget(QTreeWidget):
+	"""The look shared by the applet trees and lists: padded alternating rows, a translucent tint over the
+	row under the mouse, dim lines separating the columns and bold names in the first column."""
+
+	#: Colour of the item names.
+	NAME_COLOR = '#888'
+
+	#: Colour of the vertical lines separating the columns.
+	COLUMN_LINE_COLOR = '#e2e2e2'
+
+	#: Relative widths of the columns, which always fill the whole width. ``None`` keeps the default widths.
+	COLUMN_RATIOS = None
+
+	#: Translucent tint painted over the row under the mouse.
+	HOVER_COLOR = QColor(70, 130, 220, 32)
+
+	STYLE = """
+		QTreeWidget {
+			outline: 0;
+		}
+		QTreeView::item {
+			padding: 9px 8px;
+		}
+		QHeaderView::section {
+			padding: 6px 8px;
+			font-weight: bold;
+		}
+	"""
+
+	def __init__(self):
+		super().__init__()
+		# The first column index of the row under the mouse, invalid when there is none.
+		self._hover = QPersistentModelIndex()
+		# Track the mouse to highlight the row under it. The row under a still mouse changes when the
+		# tree scrolls too.
+		self.setMouseTracking(True)
+		self.verticalScrollBar().valueChanged.connect(self._updateHover)
+		self.setAlternatingRowColors(True)
+		# Scroll smoothly instead of by whole rows.
+		self.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
+		self.setStyleSheet(self.STYLE)
+
+	def styleName(self, item):
+		"""Show the first column of ``item`` as a name."""
+		font = item.font(0)
+		font.setBold(True)
+		item.setFont(0, font)
+		item.setForeground(0, QColor(self.NAME_COLOR))
+
+	def drawRow(self, painter, option, index):
+		super().drawRow(painter, option, index)
+		if self._hover.isValid() and index.siblingAtColumn(0) == QModelIndex(self._hover):
+			# The whole row including the indentation, which the item hover state does not cover.
+			painter.fillRect(option.rect, self.HOVER_COLOR)
+		# Separate the columns with dim vertical lines, the rows join them to continuous lines.
+		header = self.header()
+		painter.save()
+		painter.setPen(QPen(QColor(self.COLUMN_LINE_COLOR), 1))
+		for column in range(header.count() - 1):
+			if header.isSectionHidden(column):
+				continue
+			x = header.sectionViewportPosition(column) + header.sectionSize(column) - 1
+			painter.drawLine(x, option.rect.top(), x, option.rect.bottom())
+		painter.restore()
+
+	def mouseMoveEvent(self, event):
+		self._updateHover()
+		super().mouseMoveEvent(event)
+
+	def leaveEvent(self, event):
+		self._setHover(QModelIndex())
+		super().leaveEvent(event)
+
+	@Slot()
+	def _updateHover(self):
+		pos = self.viewport().mapFromGlobal(QCursor.pos())
+		index = self.indexAt(pos) if self.viewport().rect().contains(pos) else QModelIndex()
+		self._setHover(index)
+
+	def _setHover(self, index):
+		index = index.siblingAtColumn(0) if index.isValid() else QModelIndex()
+		if index != QModelIndex(self._hover):
+			self._hover = QPersistentModelIndex(index)
+			self.viewport().update()
+
+	def resizeEvent(self, event):
+		super().resizeEvent(event)
+		if self.COLUMN_RATIOS is None:
+			return
+		# Distribute the whole width among the columns, the last one takes the rounding remainder.
+		width = self.viewport().width()
+		total = sum(self.COLUMN_RATIOS)
+		header = self.header()
+		for column, ratio in enumerate(self.COLUMN_RATIOS[:-1]):
+			header.resizeSection(column, width * ratio // total)

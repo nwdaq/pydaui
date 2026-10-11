@@ -22,7 +22,7 @@ from PySide6.QtCore import *
 from PySide6.QtWidgets import *
 from PySide6.QtGui import *
 
-from pydaui.applets.flash import AppletWindow, DauiButton
+from pydaui.ui.helpers import AppletWindow, DauiButton, StyledTreeWidget
 from pydaui.ui.icons import Icons
 
 
@@ -432,7 +432,7 @@ class _ChildrenLoader(QObject):
 		self.done.emit(self._item, nodes)
 
 
-class ConfTreeWidget(QTreeWidget):
+class ConfTreeWidget(StyledTreeWidget):
 
 	PATH_ROLE = Qt.UserRole
 
@@ -459,20 +459,20 @@ class ConfTreeWidget(QTreeWidget):
 	#: Size of the expand/collapse indicators, in pixels.
 	BRANCH_ICON_SIZE = 12
 
-	#: Colour of the item names.
-	NAME_COLOR = '#888'
-
 	#: Colour of the tree guide lines.
 	LINE_COLOR = '#c8c8c8'
-
-	#: Colour of the vertical lines separating the columns.
-	COLUMN_LINE_COLOR = '#e2e2e2'
 
 	#: Relative widths of the Name, Type, Flags and Value columns, which always fill the whole width.
 	COLUMN_RATIOS = (4, 2, 3, 4)
 
-	#: Translucent tint painted over the row under the mouse.
-	HOVER_COLOR = QColor(70, 130, 220, 32)
+	STYLE = StyledTreeWidget.STYLE + """
+		/* The expand/collapse indicators are painted by drawBranches(). */
+		QTreeView::branch:has-children:closed,
+		QTreeView::branch:has-children:open {
+			image: none;
+			border-image: none;
+		}
+	"""
 
 	def __init__(self, conf: ConfClient):
 		super().__init__()
@@ -486,16 +486,10 @@ class ConfTreeWidget(QTreeWidget):
 		self._edit_item = None
 		self._editor = None
 		self._edit_base = None
-		# The first column index of the row under the mouse, invalid when there is none.
-		self._hover = QPersistentModelIndex()
 		# The lowercase filter text, empty when not filtering.
 		self._filter = ''
 		self._expand_icon = Icons.expand()
 		self._collapse_icon = Icons.collapse()
-		# Track the mouse to show a pointing hand over the expand/collapse indicators and to highlight
-		# the row under it. The row under a still mouse changes when the tree scrolls too.
-		self.setMouseTracking(True)
-		self.verticalScrollBar().valueChanged.connect(self._updateHover)
 
 		self.setColumnCount(4)
 		self.setHeaderLabels(['Name', 'Type', 'Flags', 'Value'])
@@ -507,44 +501,9 @@ class ConfTreeWidget(QTreeWidget):
 		self.currentItemChanged.connect(lambda current, previous: self._openEditor(current))
 		self.itemClicked.connect(self._itemClicked)
 
-		self.setAlternatingRowColors(True)
 		self.setIndentation(22)
-		self.setStyleSheet("""
-			QTreeWidget {
-				outline: 0;
-			}
-			QTreeView::item {
-				padding: 9px 8px;
-			}
-			/* The expand/collapse indicators are painted by drawBranches(). */
-			QTreeView::branch:has-children:closed,
-			QTreeView::branch:has-children:open {
-				image: none;
-				border-image: none;
-			}
-			QHeaderView::section {
-				padding: 6px 8px;
-				font-weight: bold;
-			}
-		""")
 
 		self.refresh()
-
-	def drawRow(self, painter, option, index):
-		super().drawRow(painter, option, index)
-		if self._hover.isValid() and index.siblingAtColumn(0) == QModelIndex(self._hover):
-			# The whole row including the indentation, which the item hover state does not cover.
-			painter.fillRect(option.rect, self.HOVER_COLOR)
-		# Separate the columns with dim vertical lines, the rows join them to continuous lines.
-		header = self.header()
-		painter.save()
-		painter.setPen(QPen(QColor(self.COLUMN_LINE_COLOR), 1))
-		for column in range(header.count() - 1):
-			if header.isSectionHidden(column):
-				continue
-			x = header.sectionViewportPosition(column) + header.sectionSize(column) - 1
-			painter.drawLine(x, option.rect.top(), x, option.rect.bottom())
-		painter.restore()
 
 	def _has_next_visible(self, index):
 		"""Whether a sibling shown in the tree follows the item at ``index``."""
@@ -615,33 +574,7 @@ class ConfTreeWidget(QTreeWidget):
 			self.viewport().setCursor(Qt.PointingHandCursor)
 		else:
 			self.viewport().unsetCursor()
-		self._updateHover()
 		super().mouseMoveEvent(event)
-
-	def leaveEvent(self, event):
-		self._setHover(QModelIndex())
-		super().leaveEvent(event)
-
-	@Slot()
-	def _updateHover(self):
-		pos = self.viewport().mapFromGlobal(QCursor.pos())
-		index = self.indexAt(pos) if self.viewport().rect().contains(pos) else QModelIndex()
-		self._setHover(index)
-
-	def _setHover(self, index):
-		index = index.siblingAtColumn(0) if index.isValid() else QModelIndex()
-		if index != QModelIndex(self._hover):
-			self._hover = QPersistentModelIndex(index)
-			self.viewport().update()
-
-	def resizeEvent(self, event):
-		super().resizeEvent(event)
-		# Distribute the whole width among the columns, the last one takes the rounding remainder.
-		width = self.viewport().width()
-		total = sum(self.COLUMN_RATIOS)
-		header = self.header()
-		for column, ratio in enumerate(self.COLUMN_RATIOS[:-1]):
-			header.resizeSection(column, width * ratio // total)
 
 	def refresh(self):
 		"""Reload the tree from the root, collapsing everything."""
@@ -676,10 +609,7 @@ class ConfTreeWidget(QTreeWidget):
 			item.setData(0, self.PATH_ROLE, node['path'])
 			item.setData(0, self.TYPE_ROLE, node['type'])
 			item.setData(0, self.FLAGS_ROLE, node['flags'])
-			font = item.font(0)
-			font.setBold(True)
-			item.setFont(0, font)
-			item.setForeground(0, QColor(self.NAME_COLOR))
+			self.styleName(item)
 			if node['is_subtree']:
 				# Add a placeholder child so the expand arrow appears; the real
 				# children are loaded lazily when the item is first expanded.
