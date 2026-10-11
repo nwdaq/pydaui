@@ -5,6 +5,7 @@ import importlib.metadata
 import json
 import os
 import subprocess
+import sys
 from glob import glob
 from PyInstaller.utils.hooks import collect_all, copy_metadata
 
@@ -31,6 +32,13 @@ os.makedirs(workpath, exist_ok=True)
 with open(_build_info, 'w') as f:
 	json.dump({'version': _version(), 'date': _date.strftime('%Y-%m-%d')}, f)
 datas.append((_build_info, 'pydaui'))
+
+# The change log, read by pydaui.changelog
+sys.path.insert(0, os.path.join(SPECPATH, '..', 'src'))
+from pydaui import changelog
+_changelog = os.path.join(workpath, 'changelog.json')
+changelog.write(_changelog, SPECPATH)
+datas.append((_changelog, 'pydaui'))
 
 binaries = []
 hiddenimports = []

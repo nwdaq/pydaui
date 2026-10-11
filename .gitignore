@@ -12,3 +12,4 @@ dist/
 
 # Build information stamped by the builds
 src/pydaui/build.json
+src/pydaui/changelog.json

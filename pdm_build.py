@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# pdm-backend build hook stamping the version and the build date into the package
+# pdm-backend build hook stamping the version, the build date and the change log into the package
 #
 # Copyright (c) 2026, Marek Koza (qyx@krtko.org)
 # All rights reserved.
@@ -8,6 +8,9 @@
 import datetime
 import json
 import os
+import subprocess
+import sys
+import warnings
 
 
 def pdm_build_initialize(context):
@@ -27,3 +30,10 @@ def pdm_build_initialize(context):
 		'version': context.config.metadata['version'],
 		'date': date.strftime('%Y-%m-%d'),
 	}))
+
+	sys.path.insert(0, str(context.root / 'src'))
+	from pydaui import changelog
+	try:
+		changelog.write(path / 'changelog.json', context.root)
+	except (OSError, subprocess.SubprocessError) as e:
+		warnings.warn(f'cannot generate the change log from git: {e}')
