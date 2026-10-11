@@ -31,15 +31,21 @@ class DeviceMenu(QMenu):
 		super().__init__(self.tr('&Device'))
 
 
-class AboutMenu(QMenu):
+class HelpMenu(QMenu):
+
+	aboutRequested = Signal()
 
 	def __init__(self):
-		super().__init__(self.tr('&About'))
+		super().__init__(self.tr('&Help'))
+
+		about_action = self.addAction(Icons.about(), self.tr('&About'))
+		about_action.triggered.connect(self.aboutRequested)
 
 
 class MainMenu(QToolBar):
 
 	quitRequested = Signal()
+	aboutRequested = Signal()
 
 	def __init__(self, connection):
 		super().__init__()
@@ -56,7 +62,9 @@ class MainMenu(QToolBar):
 		self._app_menu.quitRequested.connect(self.quitRequested)
 		self._menu.addMenu(self._app_menu)
 		self._menu.addMenu(DeviceMenu())
-		self._menu.addMenu(AboutMenu())
+		self._help_menu = HelpMenu()
+		self._help_menu.aboutRequested.connect(self.aboutRequested)
+		self._menu.addMenu(self._help_menu)
 
 		self.addWidget(self._menu)
 		self.addSeparator()

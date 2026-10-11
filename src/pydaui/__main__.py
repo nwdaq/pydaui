@@ -25,6 +25,7 @@ from superqt.fonticon import icon, spin, pulse
 from pydaui.connection import *
 from pydaui.ui.menu import *
 from pydaui.ui.connect_window import ConnectWindow
+from pydaui.ui.about_window import AboutWindow
 from pydaui.ui.ribbon import Ribbon
 from pydaui.ui.style import DauiStyle
 from pydaui.settings import Settings
@@ -106,6 +107,7 @@ class MainWindow(QMainWindow):
 
 		self._main_menu = MainMenu(self._connection)
 		self._main_menu.quitRequested.connect(self.close)
+		self._main_menu.aboutRequested.connect(lambda: self._openInfo(AboutWindow))
 		self.addToolBar(self._main_menu)
 		self.addToolBarBreak()
 
@@ -119,6 +121,9 @@ class MainWindow(QMainWindow):
 		self._mdi_area = MdiArea()
 		self.setCentralWidget(self._mdi_area)
 
+		# The open windows of the Help menu by their class, only one of each is shown.
+		self._info_windows = {}
+
 	@Slot(object)
 	def _openApplet(self, instance):
 		try:
@@ -128,6 +133,17 @@ class MainWindow(QMainWindow):
 			return
 		self._mdi_area.addSubWindow(window)
 		window.show()
+
+	def _openInfo(self, window_class):
+		"""Show the window of ``window_class``, opening it if it is not open yet."""
+		window = self._info_windows.get(window_class)
+		if window is None:
+			window = window_class()
+			window.destroyed.connect(lambda: self._info_windows.pop(window_class, None))
+			self._info_windows[window_class] = window
+			self._mdi_area.addSubWindow(window)
+		window.show()
+		self._mdi_area.setActiveSubWindow(window)
 
 	def resizeEvent(self, event):
 		super().resizeEvent(event)

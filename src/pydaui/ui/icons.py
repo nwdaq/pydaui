@@ -5,6 +5,8 @@
 # Copyright (c) 2026, Marek Koza (qyx@krtko.org)
 # All rights reserved.
 
+from pathlib import Path
+
 from pydaui.ui.helpers import SvgIcon
 
 
@@ -26,6 +28,14 @@ class Icons:
 	PRIMARY = DARK_BLUE
 	PRIMARY_DISABLED = DARK_GRAY
 	PRIMARY_LIGHT = LIGHT_BLUE
+
+	#: Directory of the icons kept as SVG files.
+	DIR = Path(__file__).resolve().parent.parent / 'icons'
+
+	@staticmethod
+	def plum():
+		"""The plumCore logo: a plum with a stem and a leaf."""
+		return SvgIcon(Icons.DIR / 'plum.svg')
 
 	@staticmethod
 	def cancel():
@@ -128,6 +138,17 @@ class Icons:
 				<path d="M17.9 14.5 H18.3 Q19.9 14.5 19.9 16.1 V20.9 Q19.9 22.5 18.3 22.5 H17.9 Q16.3 22.5 16.3 20.9 V16.1 Q16.3 14.5 17.9 14.5 Z
 				         M18.1 16 Q17.5 16 17.5 16.6 V20.4 Q17.5 21 18.1 21 Q18.7 21 18.7 20.4 V16.6 Q18.7 16 18.1 16 Z"/>
 				<path d="M21.7 14.5 H23.2 V22.5 H21.7 V17 L20.6 17.6 V16.1 Z"/>
+			</g>
+		</svg>""")
+
+	@staticmethod
+	def about():
+		"""The about icon: a letter "i" in a circle."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<circle cx="12" cy="12" r="10" fill="{Icons.PRIMARY_LIGHT}" stroke="{Icons.PRIMARY}" stroke-width="1.1"/>
+			<g fill="{Icons.PRIMARY}">
+				<circle cx="12" cy="7.2" r="1.6"/>
+				<path d="M9.6 10.2 H13.2 V16.4 H14.4 V18 H9.6 V16.4 H10.8 V11.8 H9.6 Z"/>
 			</g>
 		</svg>""")
 
