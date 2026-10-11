@@ -132,6 +132,46 @@ class Icons:
 		</svg>""")
 
 	@staticmethod
+	def _chip(pins_top=(6.5, 10, 14, 17.5)):
+		"""A gray chip in the lower part of the canvas with its pins above and below, for the flash icons.
+		``pins_top`` are the x positions of the pins above, which may make room for what is drawn over it."""
+		top = ' '.join(f'M{x} 10.5 V12.5' for x in pins_top)
+		return f"""<g stroke="{Icons.DARK_GRAY}" stroke-width="1.1" stroke-linejoin="round" fill="{Icons.LIGHT_GRAY}">
+				<path d="{top} M6.5 21 V23 M10 21 V23 M14 21 V23 M17.5 21 V23"/>
+				<rect x="3.5" y="12.5" width="17" height="8.5" rx="1.2"/>
+			</g>"""
+
+	@staticmethod
+	def write():
+		"""The flash write icon: an arrow pointing down into a gray chip."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			{Icons._chip(pins_top=(5.5, 18.5))}
+			<path fill="{Icons.PRIMARY_LIGHT}" stroke="{Icons.PRIMARY}" stroke-width="1.1" stroke-linejoin="round"
+				d="M10.3 1.5 H13.7 V8 H16.8 L12 14 L7.2 8 H10.3 Z"/>
+		</svg>""")
+
+	@staticmethod
+	def read():
+		"""The flash read icon: an arrow pointing up out of a gray chip."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			{Icons._chip(pins_top=(5.5, 18.5))}
+			<path fill="{Icons.PRIMARY_LIGHT}" stroke="{Icons.PRIMARY}" stroke-width="1.1" stroke-linejoin="round"
+				d="M12 1.5 L16.8 7.5 H13.7 V15 H10.3 V7.5 H7.2 Z"/>
+		</svg>""")
+
+	@staticmethod
+	def erase():
+		"""The flash erase icon: an eraser rubbing a gray chip, tilted with its white rubbing end down to the
+		left."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			{Icons._chip()}
+			<g transform="rotate(45 14.5 8.5)" stroke="{Icons.PRIMARY}" stroke-width="1.1" stroke-linejoin="round">
+				<rect x="11" y="1.5" width="7" height="10" rx="1" fill="{Icons.PRIMARY_LIGHT}"/>
+				<path d="M11 11.5 H18 V14.5 Q18 15.5 17 15.5 H12 Q11 15.5 11 14.5 Z" fill="{Icons.WHITE}"/>
+			</g>
+		</svg>""")
+
+	@staticmethod
 	def expand():
 		"""The indicator of a collapsed tree branch: a plus sign in a small box."""
 		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 12">

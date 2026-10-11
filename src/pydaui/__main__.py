@@ -28,7 +28,6 @@ from pydaui.ui.connect_window import ConnectWindow
 from pydaui.ui.ribbon import Ribbon
 from pydaui.ui.style import DauiStyle
 from pydaui.settings import Settings
-from pydaui.applets.flash import *
 
 LOG_FORMAT = f"""[{Style.BRIGHT}{Fore.WHITE}%(asctime)s{Style.NORMAL}] {Fore.BLUE}{Style.BRIGHT}%(levelname)-10s{Fore.YELLOW}{Style.NORMAL}%(module)s:%(name)s: {Style.RESET_ALL}%(message)s"""
 

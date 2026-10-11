@@ -65,7 +65,7 @@ PANELS = (
 #: The applets in the order they are offered within their panels.
 APPLETS = (
 	Applet(conf.PROTOCOL, 'Configuration tree', Icons.conf, 'Configuration', conf.ConfTreeWindow),
-	Applet(flash.PROTOCOL, 'Flash', Icons.storage, 'Storage', flash.FlashVolumeList),
+	Applet(flash.PROTOCOL, 'Flash', Icons.storage, 'Storage', flash.FlashWindow),
 )
 
 
