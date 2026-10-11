@@ -28,7 +28,7 @@ from PySide6.QtGui import *
 from pynbus2.services import flash as flash_service
 
 from pydaui.files import display_name, read_file, write_file
-from pydaui.ui.helpers import Admonition, AppletWindow, DauiButton, StyledTreeWidget
+from pydaui.ui.helpers import ANDROID, Admonition, AppletWindow, DauiButton, StyledTreeWidget
 from pydaui.ui.icons import Icons
 from pydaui.ui.progress_window import ByteFormat, ProgressWindow
 
@@ -596,7 +596,8 @@ class PartitionList(StyledTreeWidget):
 
 	def mousePressEvent(self, event):
 		super().mousePressEvent(event)
-		self._press_pos = event.position().toPoint() if event.button() == Qt.LeftButton else None
+		# Not on Android, dragging scrolls the list there and the partitions cannot be dropped into other apps.
+		self._press_pos = event.position().toPoint() if event.button() == Qt.LeftButton and not ANDROID else None
 
 	def mouseReleaseEvent(self, event):
 		super().mouseReleaseEvent(event)
@@ -685,7 +686,11 @@ class FlashPartitions(QWidget):
 		hint_layout = QVBoxLayout()
 		hint_layout.setContentsMargins(4, 4, 4, 4)
 		hint_layout.addWidget(self._hint)
-		self._layout.addLayout(hint_layout)
+		# Files are dragged neither in nor out on Android.
+		if not ANDROID:
+			self._layout.addLayout(hint_layout)
+		else:
+			self._hint.hide()
 		self._layout.addWidget(self._list)
 		self.setLayout(self._layout)
 

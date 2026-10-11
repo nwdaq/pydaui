@@ -10,6 +10,8 @@ from PySide6.QtWidgets import *
 from PySide6.QtGui import *
 from superqt.fonticon import icon
 
+from pydaui.ui.helpers import ANDROID
+
 
 class DauiStyle(QProxyStyle):
 	"""Fusion with flat dark MDI subwindow title bars and frames, and roomier menus.
@@ -43,6 +45,10 @@ class DauiStyle(QProxyStyle):
 	#: Minimal width of an open menu
 	MENU_MIN_WIDTH = 300
 
+	#: The width of the scroll bars on Android, they only indicate the position there, the content scrolls
+	#: by touch.
+	ANDROID_SCROLL_BAR_EXTENT = 4
+
 	#: Title bar buttons and their icons
 	BUTTONS = {
 		QStyle.SC_TitleBarCloseButton: 'mdi7.window-close',
@@ -63,9 +69,35 @@ class DauiStyle(QProxyStyle):
 			self._icons[name] = icon(name, color=self.TEXT_COLOR.name())
 		return self._icons[name]
 
+	@staticmethod
+	def _touchScrolled(widget):
+		"""Whether ``widget`` is a scroll area scrolled by touch on Android. Not the MDI area, dragging a
+		window over it would scroll it."""
+		return ANDROID and isinstance(widget, QAbstractScrollArea) and not isinstance(widget, QMdiArea)
+
+	def _scrollTouch(self, area):
+		"""Scroll the scroll area ``area`` by dragging its content, with momentum."""
+		viewport = area.viewport()
+		# On the mouse events Android synthesizes from the touches. The scroller holds a press back until it
+		# tells a tap from a drag, a drag scrolls without the press reaching the content (selecting a row). A
+		# touch gesture would leave the press to the content and start late.
+		QScroller.grabGesture(viewport, QScroller.LeftMouseButtonGesture)
+		properties = QScroller.scroller(viewport).scrollerProperties()
+		# A light bounce at the ends and a short delay before the press goes to the content, a tap selecting a
+		# row stays apart from the start of a scroll.
+		properties.setScrollMetric(QScrollerProperties.OvershootDragResistanceFactor, 0.3)
+		properties.setScrollMetric(QScrollerProperties.OvershootScrollDistanceFactor, 0.1)
+		properties.setScrollMetric(QScrollerProperties.MousePressEventDelay, 0.1)
+		QScroller.scroller(viewport).setScrollerProperties(properties)
+
 	def polish(self, widget):
 		if isinstance(widget, QMenu):
 			widget.setMinimumWidth(self.MENU_MIN_WIDTH)
+		if self._touchScrolled(widget):
+			self._scrollTouch(widget)
+		if ANDROID and isinstance(widget, QLabel):
+			# Dragging over a label scrolls, it does not select its text. The links stay clickable.
+			widget.setTextInteractionFlags(widget.textInteractionFlags() & ~Qt.TextSelectableByMouse)
 		if isinstance(widget, QMdiSubWindow):
 			widget.installEventFilter(self)
 			for child in widget.findChildren(QWidget, options=Qt.FindDirectChildrenOnly):
@@ -97,7 +129,16 @@ class DauiStyle(QProxyStyle):
 			return 1
 		if metric == QStyle.PM_MenuBarItemSpacing:
 			return 0
+		if metric == QStyle.PM_ScrollBarExtent and isinstance(widget, QScrollBar) and self._touchScrolled(
+		        self._scrollArea(widget)):
+			return self.ANDROID_SCROLL_BAR_EXTENT
 		return super().pixelMetric(metric, opt, widget)
+
+	@staticmethod
+	def _scrollArea(scroll_bar):
+		"""The scroll area ``scroll_bar`` belongs to, if any. Its parent is a container of the area."""
+		container = scroll_bar.parentWidget()
+		return container.parentWidget() if container is not None else None
 
 	def sizeFromContents(self, ct, opt, size, widget=None):
 		size = super().sizeFromContents(ct, opt, size, widget)
