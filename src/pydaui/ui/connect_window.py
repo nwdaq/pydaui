@@ -359,28 +359,28 @@ class BleTab(ConnectWindowTab):
 		l.addWidget(QLabel('Connect to a device over Bluetooth Low Energy. %s\n\n'
 		                   'Select the device to connect to:' % howto))
 
+		# A list, not a combo box: its popup cannot be touched on Android, the touches miss its items.
 		row = QHBoxLayout()
-		cb = QComboBox()
-		cb.setIconSize(QSize(24, 24))
-		row.addWidget(cb, 1)
-		self._device_cb = cb
+		devices = QListWidget()
+		devices.setIconSize(QSize(24, 24))
+		row.addWidget(devices, 1)
+		self._devices = devices
 
 		btn = QToolButton()
 		btn.setAutoRaise(True)
 		btn.setToolTip('Refresh the devices')
 		btn.setIcon(icon('mdi7.refresh', color='#888', scale_factor=1))
 		btn.clicked.connect(self._refresh)
-		row.addWidget(btn)
+		row.addWidget(btn, alignment=Qt.AlignTop)
 		self._refresh_btn = btn
-		l.addLayout(row)
+		l.addLayout(row, 1)
 
 		self._status = QLabel()
 		l.addWidget(self._status)
-		l.addStretch(1)
 
 	@staticmethod
 	def _describe(uri):
-		"""The combo box label for a device URI: its name (if it has one) and address."""
+		"""The list label for a device URI: its name (if it has one) and address."""
 		parsed = parse_uri(uri)
 		name = parsed.get('name')
 		return '%s [%s]' % (name, parsed.host) if name else parsed.host
@@ -392,7 +392,7 @@ class BleTab(ConnectWindowTab):
 
 	def _permissionDenied(self):
 		self._refresh_btn.setEnabled(True)
-		self._device_cb.clear()
+		self._devices.clear()
 		self._status.setText(bluetooth.DENIED)
 
 	def _probe(self):
@@ -406,15 +406,18 @@ class BleTab(ConnectWindowTab):
 	@Slot(object, list)
 	def _onProbeDone(self, item, results):
 		self._finishProbe()
-		self._device_cb.clear()
+		self._devices.clear()
 		for uri in results:
-			self._device_cb.addItem(icon('mdi7.bluetooth', color='#008', scale_factor=1), self._describe(uri), uri)
+			item = QListWidgetItem(icon('mdi7.bluetooth', color='#008', scale_factor=1), self._describe(uri))
+			item.setData(Qt.UserRole, uri)
+			self._devices.addItem(item)
+		self._devices.setCurrentRow(0)
 		self._status.setText('' if results else 'No devices found.' if bluetooth.scans() else 'No bonded devices found.')
 
 	@Slot(object, str)
 	def _onProbeFailed(self, item, message):
 		self._finishProbe()
-		self._device_cb.clear()
+		self._devices.clear()
 		self._status.setText('Listing the devices failed: %s' % message)
 
 	def _finishProbe(self):
@@ -422,7 +425,8 @@ class BleTab(ConnectWindowTab):
 		self._workers.discard(self.sender())
 
 	def uri(self):
-		return self._device_cb.currentData()
+		item = self._devices.currentItem()
+		return item.data(Qt.UserRole) if item is not None else None
 
 
 class _TabScrollArea(QScrollArea):
@@ -450,6 +454,8 @@ class ConnectWindow(AppletWindow):
 	def __init__(self, connection, parent=None):
 		super().__init__(parent=parent)
 		self._connection = connection
+		# The MDI area the window is shown in, it is taken out of it while hidden, see _dismiss().
+		self._area = None
 		# Only the title, the window shows until connected and Exit quits the application.
 		self.setWindowFlags(Qt.SubWindow | Qt.CustomizeWindowHint | Qt.WindowTitleHint)
 
@@ -525,14 +531,29 @@ class ConnectWindow(AppletWindow):
 			return
 		self._error.hide()
 		# The connecting window shows instead, this one opens again when connecting fails or is cancelled.
-		# Not closed, that closes its content too, which stays hidden when the window shows again.
+		area = self.mdiArea()
+		self._dismiss()
+		ConnectingWindow.start(self._connection, uri, area)
+
+	def _dismiss(self):
+		"""Hide the window until it is shown again with :meth:`showCentered`. Not closed, that closes its
+		content too, which stays hidden when the window shows again. Taken out of the MDI area, which shows
+		a hidden maximized window again when activating another one (QMdiArea restores the maximized
+		windows, showing them)."""
+		self._area = self.mdiArea() or self._area
 		self.hide()
-		ConnectingWindow.start(self._connection, uri, self.mdiArea())
+		if self._area is not None:
+			self._area.removeSubWindow(self)
+
+	def showCentered(self):
+		if self.mdiArea() is None and self._area is not None:
+			self._area.addSubWindow(self)
+		super().showCentered()
 
 	@Slot(object)
 	def _connectionChanged(self, uri):
 		if uri and self.isVisible():
-			self.hide()
+			self._dismiss()
 
 	@Slot(str, str)
 	def _connectFailed(self, uri, message):

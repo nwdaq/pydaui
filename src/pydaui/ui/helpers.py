@@ -180,9 +180,7 @@ class AppletWindow(QMdiSubWindow):
 		area = self.mdiArea()
 		if visible:
 			super().setVisible(True)
-			# The MDI area of the main window may show all its windows maximized.
-			if (self.MAXIMIZE and area is not None and getattr(area, 'maximizesWindows', lambda: False)()
-			        and not self.isMaximized()):
+			if self._maximized() and not self.isMaximized():
 				self.showMaximized()
 			return
 		if area is None or area.activeSubWindow() is not self:
@@ -194,11 +192,17 @@ class AppletWindow(QMdiSubWindow):
 		super().setVisible(False)
 		area.activatePreviousSubWindow()
 
+	def _maximized(self):
+		"""Whether the window is shown maximized, the MDI area of the main window may maximize its windows."""
+		area = self.mdiArea()
+		return self.MAXIMIZE and area is not None and getattr(area, 'maximizesWindows', lambda: False)()
+
 	def showCentered(self):
 		"""Show the window in the middle of its MDI area and activate it, as large as it prefers but no larger
-		than the area (e.g. a tablet in portrait)."""
+		than the area (e.g. a tablet in portrait). Unless it is shown maximized, resizing it would leave it
+		maximized at the new size."""
 		area = self.mdiArea()
-		if area is not None:
+		if area is not None and not self._maximized():
 			viewport = area.viewport().size()
 			self.resize(self.sizeHint().boundedTo(viewport))
 			self.move(max(0, (viewport.width() - self.width()) // 2), max(0, (viewport.height() - self.height()) // 2))
