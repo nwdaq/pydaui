@@ -1,0 +1,48 @@
+name: Build with pyinstaller for Windows
+
+on:
+  push:
+    branches: [ "master", "develop" ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    - name: Checkout the repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up PDM with Python 3.13
+      uses: pdm-project/setup-pdm@v4
+      with:
+        python-version: "3.13"
+
+    - name: Install dependencies
+      run: pdm install -G build --frozen-lockfile
+
+    - name: Build
+      run: |
+        pdm run pyinstaller --noconfirm packaging/pydaui.spec
+        ARTIFACT_NAME=pydaui-`git describe --tags --always`-windows
+        echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_ENV
+
+    - name: Smoke test
+      run: |
+        QT_QPA_PLATFORM=offscreen timeout 10 dist/pydaui/pydaui.exe || test $? -eq 124
+
+    # The artifact is zipped by upload-artifact, upload the directory as is
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        path: dist/pydaui
+        name: ${{ env.ARTIFACT_NAME }}

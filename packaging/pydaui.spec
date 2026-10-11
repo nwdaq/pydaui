@@ -89,6 +89,19 @@ _qt_drop = [
 	'PySide6/Qt/lib/libQt6Network',
 	'PySide6/Qt/lib/libQt6DataVisualization',
 	'PySide6/Qt/lib/libQt6EglFS',
+	# The same on Windows, where PySide6 has a flat layout
+	'PySide6/translations/',
+	'PySide6/plugins/platforminputcontexts/qtvirtualkeyboardplugin',
+	'PySide6/plugins/imageformats/qpdf',
+	'PySide6/plugins/tls/',
+	'PySide6/plugins/networkinformation/',
+	'PySide6/plugins/generic/',
+	'PySide6/Qt6Quick',
+	'PySide6/Qt6Qml',
+	'PySide6/Qt6VirtualKeyboard',
+	'PySide6/Qt6Pdf',
+	'PySide6/Qt6Network',
+	'PySide6/Qt6DataVisualization',
 ]
 
 def _qt_keep(entry):
@@ -100,6 +113,9 @@ a.datas = [d for d in a.datas if _qt_keep(d)]
 
 pyz = PYZ(a.pure)
 
+# MinGW strip corrupts the MSVC built DLLs, which carry no symbols anyway
+_strip = sys.platform != 'win32'
+
 exe = EXE(
     pyz,
     a.scripts,
@@ -108,7 +124,7 @@ exe = EXE(
     name='pydaui',
     debug=False,
     bootloader_ignore_signals=False,
-    strip=True,
+    strip=_strip,
     upx=True,
     console=True,
     disable_windowed_traceback=False,
@@ -121,7 +137,7 @@ coll = COLLECT(
     exe,
     a.binaries,
     a.datas,
-    strip=True,
+    strip=_strip,
     upx=True,
     upx_exclude=[],
     name='pydaui',
