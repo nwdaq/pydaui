@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The system bar colors, the dark icons Qt asks for in the light mode are visible on them. -->
+<resources>
+    <color name="pydaui_status_bar">#ffffff</color>
+    <color name="pydaui_navigation_bar">#fafafa</color>
+</resources>

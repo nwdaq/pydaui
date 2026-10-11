@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The system bar colors in the dark mode, Qt asks for light icons then. -->
+<resources>
+    <color name="pydaui_status_bar">#202020</color>
+    <color name="pydaui_navigation_bar">#202020</color>
+</resources>

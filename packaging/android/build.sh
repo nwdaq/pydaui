@@ -68,20 +68,32 @@ for wheel in PySide6 shiboken6; do
 		"https://download.qt.io/official_releases/QtForPython/${wheel,,}/$file"
 done
 
-# python-for-android patched, its Qt bootstrap activity does not pass the activity results on to Qt.
-# The file dialogs wait for them forever otherwise.
+# python-for-android patched:
+# - Its Qt bootstrap activity does not pass the activity results on to Qt, the file dialogs wait for them
+#   forever otherwise.
+# - The activity style sets no system bar colors, the bars stay black. Qt asks for dark icons in the light
+#   mode, they are not visible then. The colors are in packaging/android/res, added below.
 [ -d "$P4A/.git" ] || git clone --filter=blob:none "$P4A_REPO" "$P4A"
 git -C "$P4A" checkout -f -q "$P4A_COMMIT"
-python - "$P4A/pythonforandroid/bootstraps/qt/build/src/main/java/org/kivy/android/PythonActivity.java" <<'EOF'
-import sys
-path = sys.argv[1]
-with open(path) as f:
-	source = f.read()
+python - "$P4A/pythonforandroid/bootstraps/qt/build" <<'EOF'
+import os, sys
+build = sys.argv[1]
+
+def patch(path, old, new):
+	path = os.path.join(build, path)
+	with open(path) as f:
+		source = f.read()
+	assert source.count(old) == 1, f'{old!r} not found in {path}'
+	with open(path, 'w') as f:
+		f.write(source.replace(old, new))
+
 method = 'protected void onActivityResult(int requestCode, int resultCode, Intent intent) {\n'
-assert source.count(method) == 1, 'onActivityResult not found in ' + path
-source = source.replace(method, method + '        super.onActivityResult(requestCode, resultCode, intent);\n')
-with open(path, 'w') as f:
-	f.write(source)
+patch('src/main/java/org/kivy/android/PythonActivity.java', method,
+      method + '        super.onActivityResult(requestCode, resultCode, intent);\n')
+no_title = '<item name="android:windowNoTitle">true</item>\n'
+patch('templates/strings.tmpl.xml', no_title,
+      no_title + '        <item name="android:statusBarColor">@color/pydaui_status_bar</item>\n'
+                 '        <item name="android:navigationBarColor">@color/pydaui_navigation_bar</item>\n')
 EOF
 
 # --init generates the recipes, the jars and buildozer.spec without building. The spec is
@@ -91,9 +103,9 @@ pyside6-android-deploy --init --keep-deployment-files --force --verbose --name p
 	--wheel-pyside "$WHEELS/PySide6-$PYSIDE_VERSION-$QT_VERSION-cp311-cp311-android_$ARCH.whl" \
 	--wheel-shiboken "$WHEELS/shiboken6-$PYSIDE_VERSION-$QT_VERSION-cp311-cp311-android_$ARCH.whl"
 
-python - buildozer.spec "$P4A" "${REQUIREMENTS[@]}" <<'EOF'
+python - buildozer.spec "$P4A" "$ROOT/packaging/android/res" "${REQUIREMENTS[@]}" <<'EOF'
 import configparser, sys
-path, p4a, *requirements = sys.argv[1:]
+path, p4a, res, *requirements = sys.argv[1:]
 spec = configparser.ConfigParser(interpolation=None, comment_prefixes='#')
 spec.optionxform = str
 spec.read(path)
@@ -113,6 +125,8 @@ app['android.minapi'] = '28'
 app['android.api'] = '34'
 app['android.accept_sdk_license'] = 'True'
 app['p4a.source_dir'] = p4a
+# Merged into the res directory of the APK
+app['android.add_resources'] = res
 spec['buildozer']['log_level'] = '2'
 with open(path, 'w') as f:
 	spec.write(f)
