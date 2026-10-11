@@ -26,6 +26,7 @@ from pydaui.connection import *
 from pydaui.ui.menu import *
 from pydaui.ui.connect_window import ConnectWindow
 from pydaui.ui.about_window import AboutWindow
+from pydaui.ui.changelog_window import ChangelogWindow
 from pydaui.ui.ribbon import Ribbon
 from pydaui.ui.style import DauiStyle
 from pydaui.settings import Settings
@@ -107,6 +108,7 @@ class MainWindow(QMainWindow):
 
 		self._main_menu = MainMenu(self._connection)
 		self._main_menu.quitRequested.connect(self.close)
+		self._main_menu.changelogRequested.connect(lambda: self._openInfo(ChangelogWindow))
 		self._main_menu.aboutRequested.connect(lambda: self._openInfo(AboutWindow))
 		self.addToolBar(self._main_menu)
 		self.addToolBarBreak()

@@ -153,6 +153,22 @@ class Icons:
 		</svg>""")
 
 	@staticmethod
+	def changelog():
+		"""The change log icon: a page with a folded corner and a bulleted list on it."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<g stroke="{Icons.PRIMARY}" stroke-width="1.1" stroke-linejoin="round">
+				<path fill="{Icons.PRIMARY_LIGHT}" d="M4.5 2.5 H15 L19.5 7 V21.5 H4.5 Z"/>
+				<path fill="{Icons.WHITE}" d="M15 2.5 V7 H19.5 Z"/>
+				<path d="M10.5 11 H16.5 M10.5 14.5 H16.5 M10.5 18 H14.5" stroke-linecap="round"/>
+			</g>
+			<g fill="{Icons.PRIMARY}">
+				<circle cx="7.8" cy="11" r="1.1"/>
+				<circle cx="7.8" cy="14.5" r="1.1"/>
+				<circle cx="7.8" cy="18" r="1.1"/>
+			</g>
+		</svg>""")
+
+	@staticmethod
 	def _chip(pins_top=(6.5, 10, 14, 17.5)):
 		"""A gray chip in the lower part of the canvas with its pins above and below, for the flash icons.
 		``pins_top`` are the x positions of the pins above, which may make room for what is drawn over it."""

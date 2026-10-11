@@ -33,10 +33,14 @@ class DeviceMenu(QMenu):
 
 class HelpMenu(QMenu):
 
+	changelogRequested = Signal()
 	aboutRequested = Signal()
 
 	def __init__(self):
 		super().__init__(self.tr('&Help'))
+
+		changelog_action = self.addAction(Icons.changelog(), self.tr('&Change log'))
+		changelog_action.triggered.connect(self.changelogRequested)
 
 		about_action = self.addAction(Icons.about(), self.tr('&About'))
 		about_action.triggered.connect(self.aboutRequested)
@@ -45,6 +49,7 @@ class HelpMenu(QMenu):
 class MainMenu(QToolBar):
 
 	quitRequested = Signal()
+	changelogRequested = Signal()
 	aboutRequested = Signal()
 
 	def __init__(self, connection):
@@ -63,6 +68,7 @@ class MainMenu(QToolBar):
 		self._menu.addMenu(self._app_menu)
 		self._menu.addMenu(DeviceMenu())
 		self._help_menu = HelpMenu()
+		self._help_menu.changelogRequested.connect(self.changelogRequested)
 		self._help_menu.aboutRequested.connect(self.aboutRequested)
 		self._menu.addMenu(self._help_menu)
 
