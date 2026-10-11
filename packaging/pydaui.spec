@@ -1,6 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import datetime
+import importlib.metadata
+import json
 import os
+import subprocess
 from glob import glob
 from PyInstaller.utils.hooks import collect_all, copy_metadata
 
@@ -11,6 +15,23 @@ datas = [
 	(os.path.join(src, 'assets'), 'pydaui/assets'),
 	(os.path.join(src, 'icons'), 'pydaui/icons'),
 ] + [(pack, 'pydaui') for pack in glob(os.path.join(src, '*.pack'))]
+
+# The version and the build date, read by pydaui.build_info
+def _version():
+	try:
+		return subprocess.check_output(['git', 'describe', '--tags', '--always', '--dirty'],
+			cwd=SPECPATH, text=True, stderr=subprocess.DEVNULL).strip()
+	except (OSError, subprocess.CalledProcessError):
+		return importlib.metadata.version('pydaui')
+
+_epoch = os.environ.get('SOURCE_DATE_EPOCH')
+_date = datetime.datetime.fromtimestamp(int(_epoch), datetime.UTC) if _epoch else datetime.datetime.now(datetime.UTC)
+_build_info = os.path.join(workpath, 'build.json')
+os.makedirs(workpath, exist_ok=True)
+with open(_build_info, 'w') as f:
+	json.dump({'version': _version(), 'date': _date.strftime('%Y-%m-%d')}, f)
+datas.append((_build_info, 'pydaui'))
+
 binaries = []
 hiddenimports = []
 

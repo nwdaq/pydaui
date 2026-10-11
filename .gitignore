@@ -9,3 +9,6 @@ dist/
 
 # CMSIS device packs are not tracked, except those already in the repository
 *.pack
+
+# Build information stamped by the builds
+src/pydaui/build.json
