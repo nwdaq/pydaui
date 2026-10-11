@@ -110,10 +110,13 @@ class MainMenu(QToolBar):
 	@Slot(object)
 	def _connectionChanged(self, uri):
 		if uri:
-			self._state_btn.setText(uri)
+			# Without the query parameters, e.g. the pack path of an SWD target, they are too long.
+			self._state_btn.setText(uri.partition('?')[0])
+			self._state_btn.setToolTip(uri)
 			self._state_btn.setIcon(self._con_ok_icon)
 			self._disconnect_btn.setEnabled(True)
 		else:
+			self._state_btn.setToolTip('')
 			self._state_btn.setText('no connection')
 			self._state_btn.setIcon(self._con_none_icon)
 			self._disconnect_btn.setEnabled(False)
