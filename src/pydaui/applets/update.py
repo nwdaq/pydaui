@@ -48,7 +48,7 @@ from elftools.common.exceptions import ELFError
 from elftools.elf.elffile import ELFFile
 from pynbus2.services import flash as flash_service
 
-from pydaui import build_info
+from pydaui import build_info, tls
 from pydaui.applets import conf
 from pydaui.connection import SocketConnection
 from pydaui.applets.flash import FlashClient, _Operation, can_write, format_size, interface_mtu
@@ -284,7 +284,7 @@ class Repository:
 
 	def _open(self, url):
 		request = urllib.request.Request(url, headers={'User-Agent': f'pydaui/{build_info.version() or "unknown"}'})
-		handlers = []
+		handlers = [urllib.request.HTTPSHandler(context=tls.context())]
 		if self.auth is not None:
 			passwords = urllib.request.HTTPPasswordMgrWithPriorAuth()
 			# Sent right away instead of after a challenge, and only to the URLs under the repository. The
