@@ -43,6 +43,8 @@ class MainMenu(QToolBar):
 
 	def __init__(self, connection):
 		super().__init__()
+		# Identifies the toolbar in the saved window state.
+		self.setObjectName('main-menu')
 
 		self._connection = connection
 
