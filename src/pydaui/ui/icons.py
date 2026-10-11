@@ -153,6 +153,17 @@ class Icons:
 		</svg>""")
 
 	@staticmethod
+	def window():
+		"""The user interface icon: a window with a dark title bar and two panes."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<g stroke="{Icons.PRIMARY}" stroke-width="1.1" stroke-linejoin="round">
+				<rect x="2.5" y="3.5" width="19" height="17" rx="1.2" fill="{Icons.WHITE}"/>
+				<path fill="{Icons.PRIMARY}" d="M3.7 3.5 H20.3 Q21.5 3.5 21.5 4.7 V7.5 H2.5 V4.7 Q2.5 3.5 3.7 3.5 Z"/>
+				<rect x="2.5" y="7.5" width="6" height="13" fill="{Icons.PRIMARY_LIGHT}"/>
+			</g>
+		</svg>""")
+
+	@staticmethod
 	def changelog():
 		"""The change log icon: a page with a folded corner and a bulleted list on it."""
 		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">

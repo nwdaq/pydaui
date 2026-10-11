@@ -27,6 +27,7 @@ from pydaui.ui.menu import *
 from pydaui.ui.connect_window import ConnectWindow
 from pydaui.ui.about_window import AboutWindow
 from pydaui.ui.changelog_window import ChangelogWindow
+from pydaui.ui.settings_window import SettingsWindow, UiSection
 from pydaui.ui.ribbon import Ribbon
 from pydaui.ui.style import DauiStyle
 from pydaui.settings import Settings
@@ -107,9 +108,10 @@ class MainWindow(QMainWindow):
 		self._overlay.hide()
 
 		self._main_menu = MainMenu(self._connection)
+		self._main_menu.settingsRequested.connect(lambda: self._openWindow(SettingsWindow, self._settings))
 		self._main_menu.quitRequested.connect(self.close)
-		self._main_menu.changelogRequested.connect(lambda: self._openInfo(ChangelogWindow))
-		self._main_menu.aboutRequested.connect(lambda: self._openInfo(AboutWindow))
+		self._main_menu.changelogRequested.connect(lambda: self._openWindow(ChangelogWindow))
+		self._main_menu.aboutRequested.connect(lambda: self._openWindow(AboutWindow))
 		self.addToolBar(self._main_menu)
 		self.addToolBarBreak()
 
@@ -123,8 +125,8 @@ class MainWindow(QMainWindow):
 		self._mdi_area = MdiArea()
 		self.setCentralWidget(self._mdi_area)
 
-		# The open windows of the Help menu by their class, only one of each is shown.
-		self._info_windows = {}
+		# The open windows of the menus by their class, only one of each is shown.
+		self._windows = {}
 
 	@Slot(object)
 	def _openApplet(self, instance):
@@ -134,15 +136,20 @@ class MainWindow(QMainWindow):
 			QMessageBox.warning(self, instance.applet.title, 'Cannot open %s:\n\n%s' % (instance.applet.title, e))
 			return
 		self._mdi_area.addSubWindow(window)
-		window.show()
+		if not self._settings.get(UiSection.APPLET_ALLOW_MINIMIZING, True):
+			window.setWindowFlags(window.windowFlags() & ~Qt.WindowMinimizeButtonHint)
+		if self._settings.get(UiSection.APPLET_START_MAXIMIZED, False):
+			window.showMaximized()
+		else:
+			window.show()
 
-	def _openInfo(self, window_class):
-		"""Show the window of ``window_class``, opening it if it is not open yet."""
-		window = self._info_windows.get(window_class)
+	def _openWindow(self, window_class, *args):
+		"""Show the window of ``window_class``, opening it with ``args`` if it is not open yet."""
+		window = self._windows.get(window_class)
 		if window is None:
-			window = window_class()
-			window.destroyed.connect(lambda: self._info_windows.pop(window_class, None))
-			self._info_windows[window_class] = window
+			window = window_class(*args)
+			window.destroyed.connect(lambda: self._windows.pop(window_class, None))
+			self._windows[window_class] = window
 			self._mdi_area.addSubWindow(window)
 		window.show()
 		self._mdi_area.setActiveSubWindow(window)
@@ -176,9 +183,13 @@ class DauiApplication(QApplication):
 		self._connection = PyDauiConnection()
 
 		self._main_window = MainWindow(self._connection, self._settings)
-		self._main_window.show()
+		if self._settings.get(UiSection.MAIN_START_MAXIMIZED, False):
+			self._main_window.showMaximized()
+		else:
+			self._main_window.show()
 
 		self._connect_window = ConnectWindow(self._connection, parent=self._main_window)
+
 
 	def exec(self):
 		super().exec()
