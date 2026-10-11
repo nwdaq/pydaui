@@ -17,11 +17,17 @@ class Admonition(QFrame):
 	MESSAGE = 1
 	NOTE = 1
 	WARN = 2
+	#: Only the text in a gray frame, without an icon.
+	NONE = 3
 
-	def __init__(self, text, ad_type=0):
+	def __init__(self, text, ad_type=0, center=False):
+		"""``center`` centres the text horizontally."""
 		super().__init__()
 
-		if ad_type == Admonition.NOTE:
+		if ad_type == Admonition.NONE:
+			ad_icon = None
+			self.setProperty('class', ['admonition', 'admonition-none'])
+		elif ad_type == Admonition.NOTE:
 			ad_icon = icon('mdi7.information-outline', color='#008')
 			self.setProperty('class', ['admonition', 'admonition-note'])
 		elif ad_type == Admonition.WARN:
@@ -43,15 +49,22 @@ class Admonition(QFrame):
 			.admonition-warn {
 				border-color: #800;
 			}
+			.admonition-none {
+				border-color: #999;
+			}
 
 		''')
 
 		l = QHBoxLayout()
-		i = QLabel()
-		i.setPixmap(ad_icon.pixmap(24, 24))
-		l.addWidget(i)
+		if ad_icon is not None:
+			i = QLabel()
+			i.setPixmap(ad_icon.pixmap(24, 24))
+			l.addWidget(i)
 		label = QLabel(text)
 		label.setWordWrap(True)
+		label.setOpenExternalLinks(True)
+		if center:
+			label.setAlignment(Qt.AlignCenter)
 		l.addWidget(label, stretch=1)
 		self.setLayout(l)
 
