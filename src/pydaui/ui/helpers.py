@@ -67,6 +67,10 @@ class Admonition(QFrame):
 			label.setAlignment(Qt.AlignCenter)
 		l.addWidget(label, stretch=1)
 		self.setLayout(l)
+		self._label = label
+
+	def setText(self, text):
+		self._label.setText(text)
 
 
 

@@ -18,14 +18,19 @@ through the widgets that need it; widgets that need an additional service on the
 """
 
 import logging
+import threading
 
 import pynbus2
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Signal, Slot
 
 
 class PyDauiConnection(QObject):
 
 	connectionChanged = Signal(object)
+	#: (uri, error message) when :meth:`connectUriAsync` fails.
+	connectFailed = Signal(str, str)
+	#: Delivers the (attempt, uri, result) of the thread of :meth:`connectUriAsync` to the GUI thread.
+	_opened = Signal(object, str, object)
 
 	def __init__(self):
 		super().__init__()
@@ -39,30 +44,81 @@ class PyDauiConnection(QObject):
 		self._children = []
 		# The connection a side connection was opened from.
 		self._parent = None
+		# The URI :meth:`connectUriAsync` is connecting to, and the token of that attempt telling its result
+		# from the result of an attempt cancelled before.
+		self._connecting = None
+		self._attempt = None
+		self._opened.connect(self._finishAsync)
 
 	def connectUri(self, uri):
+		"""Connect to ``uri``, blocking until connected. Raises when connecting fails."""
 		if self.connected:
 			self.disconnectUri()
+		self._finish(uri, self._open(uri))
 
+	def connectUriAsync(self, uri):
+		"""Connect to ``uri`` in a thread without blocking the GUI. Emits :attr:`connectionChanged` when
+		connected or :attr:`connectFailed` when connecting fails, nothing when cancelled with
+		:meth:`cancelConnect`."""
+		if self.connected:
+			self.disconnectUri()
+		self._connecting = uri
+		self._attempt = object()
+		threading.Thread(target=self._openAsync, args=(self._attempt, uri), name='connect', daemon=True).start()
+
+	def cancelConnect(self):
+		"""Abandon the connection :meth:`connectUriAsync` is making, it is closed when it is made."""
+		if self._connecting is not None:
+			self._logger.info(f'connecting to {self._connecting} cancelled')
+			self._connecting = None
+			self._attempt = None
+
+	def _openAsync(self, attempt, uri):
+		try:
+			opened = self._open(uri)
+		except Exception as e:
+			opened = e
+		self._opened.emit(attempt, uri, opened)
+
+	@Slot(object, str, object)
+	def _finishAsync(self, attempt, uri, opened):
+		if attempt is not self._attempt:
+			# Cancelled meanwhile.
+			if not isinstance(opened, Exception):
+				opened[0].close()
+			return
+		self._connecting = None
+		self._attempt = None
+		if isinstance(opened, Exception):
+			self._logger.warning(f'connecting to {uri} failed: {opened}')
+			self.connectFailed.emit(uri, str(opened))
+			return
+		self._finish(uri, opened)
+
+	def _open(self, uri):
+		"""Connect to ``uri`` and discover its interfaces without changing the state of the connection, it
+		may run in a thread. Returns the (nbus, socket, interfaces) for :meth:`_finish`."""
 		self._logger.info(f'connecting to {uri}')
 		nbus = pynbus2.connect(uri)
 		try:
 			# A socket connected to the destination the URI carries, if it carries one.
-			self._socket = nbus.socket()
+			socket = nbus.socket()
 		except Exception:
 			nbus.close()
 			raise
-		self._nbus = nbus
+		return nbus, socket, self._discoverInterfaces(nbus)
+
+	def _finish(self, uri, opened):
+		self._nbus, self._socket, self._interfaces = opened
 		self._owns_nbus = True
 		self._uri = uri
-		self._interfaces = self._discoverInterfaces()
 		self.connectionChanged.emit(uri)
 
-	def _discoverInterfaces(self):
+	def _discoverInterfaces(self, nbus):
 		"""Walk the interfaces the target exports (RemoteInterfaces over rible, the virtual ones over swd)
 		and log them. Transports without named interfaces have nothing to discover."""
 		try:
-			interfaces = self._nbus.walk()
+			interfaces = nbus.walk()
 		except pynbus2.NbusError as e:
 			# Also raised by transports which do not support discovery.
 			self._logger.info(f'no interfaces discovered: {e}')
@@ -170,6 +226,11 @@ class PyDauiConnection(QObject):
 	def socket(self):
 		"""The :class:`pynbus2.NbusSocket` this connection talks over, or ``None`` when not connected."""
 		return self._socket
+
+	@property
+	def connecting(self):
+		"""Whether :meth:`connectUriAsync` is connecting."""
+		return self._connecting is not None
 
 	@property
 	def connected(self):

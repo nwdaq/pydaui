@@ -156,9 +156,11 @@ class MainWindow(QMainWindow):
 		self._settings.setBytes('ui.state', self.saveState())
 		super().closeEvent(event)
 
-	@property
-	def overlay(self):
-		return self._overlay
+	def updateOverlay(self):
+		"""Gray the main window while any of its dialogs is open, call when one opens or closes."""
+		dialogs = [d for d in self.findChildren(QDialog, options=Qt.FindDirectChildrenOnly) if d.isVisible()]
+		self._overlay.setVisible(bool(dialogs))
+		self._overlay.raise_()
 
 
 class DauiApplication(QApplication):

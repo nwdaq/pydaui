@@ -5,6 +5,7 @@
 # Copyright (c) 2026, Marek Koza (qyx@krtko.org)
 # All rights reserved.
 
+import html
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,6 +20,13 @@ from pynbus2.uri import parse_uri, split_serial_path
 
 from pydaui.connection import *
 from pydaui.ui.helpers import Admonition
+
+
+def describeUri(uri):
+	"""The device name a connection URI carries with its transport, or the URI itself."""
+	parsed = parse_uri(uri)
+	name = parsed.get('name')
+	return '%s (%s)' % (name, parsed.scheme) if name else uri
 
 
 class ConnectWindowTab(QWidget):
@@ -78,7 +86,10 @@ class SwdTab(ConnectWindowTab):
 
 	def __init__(self, connection, parent=None):
 		super().__init__(connection, parent=parent)
+		# Keep worker references alive until their signal has been delivered.
+		self._workers = set()
 		self._createUi()
+		self._refresh()
 
 	def _createUi(self):
 		l = QVBoxLayout()
@@ -93,12 +104,10 @@ class SwdTab(ConnectWindowTab):
 		# Create a combo box to select debug probe to access the target
 		cb = QComboBox()
 		cb.setIconSize(QSize(24, 24))
-		for probe_uri in self._connection.probe('swd://'):
-			cb.addItem(probe_uri, probe_uri)
-		for i in range(cb.count()):
-			cb.setItemIcon(i, icon('mdi7.bug-outline', color='#008', scale_factor=1))
 		l.addWidget(cb)
 		self._probe_cb = cb
+		self._probe_status = QLabel()
+		l.addWidget(self._probe_status)
 
 		l.addSpacing(16)
 
@@ -120,6 +129,29 @@ class SwdTab(ConnectWindowTab):
 			'Beware, here be dragons. Selecting the wrong device may damage it.',
 			Admonition.WARN
 		))
+
+	def _refresh(self):
+		# Probing loads pyocd, which takes a while.
+		self._probe_status.setText('Looking for debug probes...')
+		worker = _ProbeWorker(self._connection, 'swd://', None)
+		worker.done.connect(self._onProbeDone)
+		worker.failed.connect(self._onProbeFailed)
+		self._workers.add(worker)
+		worker.start()
+
+	@Slot(object, list)
+	def _onProbeDone(self, item, results):
+		self._workers.discard(self.sender())
+		self._probe_cb.clear()
+		for probe_uri in results:
+			self._probe_cb.addItem(icon('mdi7.bug-outline', color='#008', scale_factor=1), probe_uri, probe_uri)
+		self._probe_status.setText('' if results else 'No debug probes found.')
+
+	@Slot(object, str)
+	def _onProbeFailed(self, item, message):
+		self._workers.discard(self.sender())
+		self._probe_cb.clear()
+		self._probe_status.setText('Looking for debug probes failed: %s' % message)
 
 	def uri(self):
 		"""The probe URI with the selected product's target and pack, reaching its virtual flash service."""
@@ -407,15 +439,21 @@ class ConnectWindow(QDialog):
 		self.finished.connect(self._finished)
 		self._createUi()
 
+		self._connection.connectionChanged.connect(self._connectionChanged)
+		self._connection.connectFailed.connect(self._connectFailed)
+
 
 	def open(self):
 		super().open()
-		self.parent().overlay.show()
-		self.parent().overlay.raise_()
+		self.parent().updateOverlay()
 
 	def _createUi(self):
 		# self.resize(QSize(400, 300))
 		self.setWindowTitle('Connect')
+
+		# Why the last connection attempt failed, hidden until one fails.
+		self._error = Admonition('', Admonition.WARN)
+		self._error.hide()
 
 		self._tabs = QTabWidget()
 		self._tabs.setTabPosition(QTabWidget.North)
@@ -439,18 +477,19 @@ class ConnectWindow(QDialog):
 		b_exit.setIconSize(QSize(24, 24))
 		b_exit.clicked.connect(self._exitClicked)
 		self._hbox_btn.addWidget(b_exit, alignment=Qt.AlignRight)
+		self._exit_btn = b_exit
 
-		b_connect = QPushButton(
-			icon('mdi7.link', color='#080', scale_factor=1),
-			'&Connect'
-		)
+		self._connect_icon = icon('mdi7.link', color='#080', scale_factor=1)
+		b_connect = QPushButton(self._connect_icon, '&Connect')
 		b_connect.setIconSize(QSize(24, 24))
 		b_connect.setDefault(True)
 		b_connect.clicked.connect(self._connectClicked)
 		self._hbox_btn.addWidget(b_connect, alignment=Qt.AlignRight)
+		self._connect_btn = b_connect
 
 
 		self._vbox = QVBoxLayout()
+		self._vbox.addWidget(self._error)
 		self._vbox.addWidget(self._tabs)
 		self._vbox.addLayout(self._hbox_btn)
 		self.setLayout(self._vbox)
@@ -459,27 +498,106 @@ class ConnectWindow(QDialog):
 	def _exitClicked(self):
 		QApplication.quit()
 
+	def showError(self, text):
+		"""Show ``text`` as the reason the last connection attempt failed."""
+		self._error.setText(text)
+		self._error.show()
+
 	@Slot()
 	def _connectClicked(self):
 		uri = self._tabs.currentWidget().uri()
 		if not uri:
 			return
+		self._error.hide()
+		self._setConnecting(True)
 		# Connecting may take a while (e.g. a BLE device connects and its interfaces are walked).
-		QApplication.setOverrideCursor(Qt.WaitCursor)
-		try:
-			self._connection.connectUri(uri)
-		except Exception as e:
-			QApplication.restoreOverrideCursor()
-			QMessageBox.warning(self, 'Connect', 'Connecting to %s failed:\n\n%s' % (uri, e))
-			return
-		QApplication.restoreOverrideCursor()
-		self.close()
+		self._connection.connectUriAsync(uri)
+
+	def _setConnecting(self, connecting):
+		"""Show the spinner in the Connect button and disable the rest while connecting."""
+		self._tabs.setEnabled(not connecting)
+		self._exit_btn.setEnabled(not connecting)
+		self._connect_btn.setEnabled(not connecting)
+		if connecting:
+			self._connect_btn.setText('Connecting...')
+			self._connect_btn.setIcon(icon('mdi7.loading', color='#080', animation=spin(self._connect_btn)))
+		else:
+			self._connect_btn.setText('&Connect')
+			self._connect_btn.setIcon(self._connect_icon)
+
+	@Slot(object)
+	def _connectionChanged(self, uri):
+		if uri and self.isVisible():
+			self._setConnecting(False)
+			self.close()
+
+	@Slot(str, str)
+	def _connectFailed(self, uri, message):
+		self._setConnecting(False)
+		self.showError('Connecting to %s failed: %s' % (describeUri(uri), message))
+		# Right away when the connection made on startup failed, not on the next check.
+		if not self.isVisible():
+			self.open()
 
 	@Slot()
 	def _finished(self):
-		self.parent().overlay.hide()
+		self.parent().updateOverlay()
 
 	@Slot()
 	def _checkTimerTimeout(self):
-		if not self._connection.connected and not self.isVisible():
+		# Not while connecting, the connection is either made or this window shows why it failed.
+		if not self._connection.connected and not self._connection.connecting and not self.isVisible():
 			self.open()
+
+
+class ConnectingWindow(QDialog):
+	"""A spinner and the device being connected over the main window, with a Cancel button. Closes when
+	the connection is made, fails or is cancelled."""
+
+	def __init__(self, connection, uri, parent=None):
+		super().__init__(parent=parent)
+		self.setWindowTitle('Connecting')
+		self._connection = connection
+		self._connection.connectionChanged.connect(self._done)
+		self._connection.connectFailed.connect(self._done)
+		self.finished.connect(self._finished)
+
+		spinner = QToolButton()
+		spinner.setAutoRaise(True)
+		spinner.setFocusPolicy(Qt.NoFocus)
+		spinner.setAttribute(Qt.WA_TransparentForMouseEvents)
+		spinner.setIconSize(QSize(32, 32))
+		spinner.setIcon(icon('mdi7.loading', color='#44c', animation=spin(spinner)))
+
+		label = QLabel('Connecting to<br/><b>%s</b>...' % html.escape(describeUri(uri)))
+
+		row = QHBoxLayout()
+		row.addWidget(spinner)
+		row.addWidget(label, 1)
+
+		cancel = QPushButton(icon('mdi7.close', color='#888', scale_factor=1), '&Cancel')
+		cancel.setIconSize(QSize(24, 24))
+		cancel.clicked.connect(self.reject)
+
+		layout = QVBoxLayout()
+		layout.addLayout(row)
+		layout.addWidget(cancel, alignment=Qt.AlignRight)
+		self.setLayout(layout)
+		self.setMinimumWidth(360)
+
+	def open(self):
+		super().open()
+		self.parent().updateOverlay()
+
+	@Slot()
+	def _done(self):
+		self.accept()
+
+	@Slot(int)
+	def _finished(self, result):
+		self._connection.connectionChanged.disconnect(self._done)
+		self._connection.connectFailed.disconnect(self._done)
+		if result == QDialog.Rejected:
+			self._connection.cancelConnect()
+		self.parent().updateOverlay()
+		self.deleteLater()
