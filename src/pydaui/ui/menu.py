@@ -196,13 +196,12 @@ class MainMenu(QToolBar):
 			self._menu = QMenu(self)
 			for menu in menus:
 				self._menu.addMenu(menu)
+			# Flat like the toolbar buttons. It opens the menu itself, a button with a menu would show an arrow.
 			button = QToolButton()
+			button.setAutoRaise(True)
 			button.setIcon(icon('mdi7.menu', color='#444', scale_factor=1))
 			button.setToolTip(self.tr('Menu'))
-			button.setMenu(self._menu)
-			button.setPopupMode(QToolButton.InstantPopup)
-			# Without the arrow of a button with a menu
-			button.setStyleSheet('QToolButton::menu-indicator { image: none; }')
+			button.clicked.connect(lambda: self._menu.exec(button.mapToGlobal(button.rect().bottomLeft())))
 			self.addWidget(button)
 			# Takes the room the menu bar takes elsewhere, the connection bar is on the right.
 			spacer = QWidget()
