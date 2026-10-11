@@ -26,9 +26,9 @@ WHEELS=$ROOT/build/android-wheels
 
 # Pure Python dependencies installed by python-for-android, keep in sync with pdm.lock
 REQUIREMENTS=(
-	superqt==0.7.3 qtpy==2.4.3 pygments==2.21.0 typing-extensions==4.16.0
+	superqt==0.7.3 qtpy==2.4.3 packaging==26.3 pygments==2.21.0 typing-extensions==4.16.0
 	fonticon-materialdesignicons7==7.2.96 cbor2==5.6.4 colorama==0.4.6
-	humanize==4.11.0 pyelftools==0.33 liblzma
+	humanize==4.11.0 pyelftools==0.33 liblzma openssl
 )
 
 rm -rf "$STAGE"
