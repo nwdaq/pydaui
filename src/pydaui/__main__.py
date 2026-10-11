@@ -134,13 +134,15 @@ class MainWindow(QMainWindow):
 
 		self._ribbon = Ribbon(self._connection, self)
 		self._ribbon.appletRequested.connect(self._openApplet)
-		# The arrangement of the ribbon panels, restored once they are all added.
-		state = self._settings.getBytes('ui.state')
-		if state is not None:
-			self.restoreState(state)
 
 		self._mdi_area = MdiArea()
 		self.setCentralWidget(self._mdi_area)
+
+		# The arrangement of the ribbon panels, restored once they are all added. After the central widget
+		# is set, a state restored without one loses it when it was saved with no room left for it.
+		state = self._settings.getBytes('ui.state')
+		if state is not None:
+			self.restoreState(state)
 
 		# The open windows of the menus by their class, only one of each is shown.
 		self._windows = {}

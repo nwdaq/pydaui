@@ -463,28 +463,22 @@ class ConnectWindow(QDialog):
 		super().open()
 		self.parent().updateOverlay()
 
-	def showEvent(self, event):
-		super().showEvent(event)
-		self._fitToScreen()
+	def setVisible(self, visible):
+		if visible:
+			self._fitToScreen()
+		super().setVisible(visible)
 
 	def _fitToScreen(self):
-		"""Shrink and move the window into the screen when it is bigger (e.g. a tablet in portrait).
+		"""Size the window to fit the screen when it is smaller (e.g. a tablet in portrait).
 
 		Its preferred size is used otherwise, not the one Qt gives a window by default, capped to 2/3 of
-		the screen.
+		the screen. Done before the window is shown, QDialog then centres it over the main window within
+		the screen. Moving it once shown leaves it drawn elsewhere than it takes the touches on Android.
 		"""
-		available = self.screen().availableGeometry()
-		frame = self.frameGeometry().size() - self.size()
-		size = self.sizeHint().boundedTo(available.size() - frame)
-		if size != self.size():
-			self.resize(size)
-		geometry = self.frameGeometry()
-		geometry.moveRight(min(geometry.right(), available.right()))
-		geometry.moveBottom(min(geometry.bottom(), available.bottom()))
-		geometry.moveLeft(max(geometry.left(), available.left()))
-		geometry.moveTop(max(geometry.top(), available.top()))
-		if geometry.topLeft() != self.frameGeometry().topLeft():
-			self.move(geometry.topLeft())
+		parent = self.parentWidget() or self
+		# Not known before the window is shown, the frame of the main window is the same kind.
+		frame = parent.frameGeometry().size() - parent.size()
+		self.resize(self.sizeHint().boundedTo(parent.screen().availableGeometry().size() - frame))
 
 	def _createUi(self):
 		# self.resize(QSize(400, 300))
