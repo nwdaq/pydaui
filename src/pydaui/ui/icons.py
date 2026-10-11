@@ -61,6 +61,16 @@ class Icons:
 		</svg>""")
 
 	@staticmethod
+	def abort():
+		"""An abort icon: a stop sign, an octagon with a bar across it."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<g stroke="{Icons.DARK_RED}" stroke-width="1.1" stroke-linejoin="round">
+				<path fill="{Icons.LIGHT_RED}" d="M8.3 2.5 H15.7 L21.5 8.3 V15.7 L15.7 21.5 H8.3 L2.5 15.7 V8.3 Z"/>
+				<rect x="6.5" y="10.4" width="11" height="3.2" rx="0.6" fill="{Icons.DARK_RED}"/>
+			</g>
+		</svg>""")
+
+	@staticmethod
 	def quit():
 		"""A quit icon: an open door with an arrow leaving through it."""
 		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
