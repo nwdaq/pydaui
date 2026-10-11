@@ -438,7 +438,7 @@ path = "./vendor/pynbus2-0.2.0.tar.gz"
 summary = "Python client library for the plumCore nbus2 messaging bus"
 groups = ["default"]
 files = [
-    {file = "pynbus2-0.2.0.tar.gz", hash = "sha256:4d001a44ee8860b2d4c3d0c8928bba18133cd4a3c3ff07964a64c32b2cf9b05f"},
+    {file = "pynbus2-0.2.0.tar.gz", hash = "sha256:c551b754c8894dbb028928b784c07388eefd8dbc876a75f3003a2eb66cd0d045"},
 ]
 
 [[package]]
@@ -459,7 +459,7 @@ dependencies = [
     "simplepyble>=0.7",
 ]
 files = [
-    {file = "pynbus2-0.2.0.tar.gz", hash = "sha256:4d001a44ee8860b2d4c3d0c8928bba18133cd4a3c3ff07964a64c32b2cf9b05f"},
+    {file = "pynbus2-0.2.0.tar.gz", hash = "sha256:c551b754c8894dbb028928b784c07388eefd8dbc876a75f3003a2eb66cd0d045"},
 ]
 
 [[package]]
