@@ -89,6 +89,9 @@ class MdiArea(QMdiArea):
 		super().__init__()
 		self._settings = settings
 		self.setBackground(self._backgroundBrush())
+		# The windows decide themselves whether they are maximized, see AppletWindow.MAXIMIZE. QMdiArea
+		# would maximize every window activated while a maximized one is active otherwise.
+		self.setOption(QMdiArea.DontMaximizeSubWindowOnActivation)
 
 		# Above the applet windows, catching the clicks meant for them.
 		self._dim = QWidget(self.viewport())
