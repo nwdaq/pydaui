@@ -61,10 +61,43 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['numpy', 'PIL', 'PySide6.QtOpenGL', 'PySide6.QtOpenGLWidgets'],
+    # qtpy (pulled by superqt) references every Qt module, keep only what is used
+    excludes=['numpy', 'PIL', 'PySide6.QtOpenGL', 'PySide6.QtOpenGLWidgets',
+        'PySide6.QtNetwork', 'PySide6.QtDataVisualization', 'qtpy.QtDataVisualization'],
     noarchive=False,
     optimize=0,
 )
+
+# Qt plugins pulling in large unused Qt libraries (Quick/Qml, Pdf, Network) and
+# platforms not relevant for a desktop application. The translations are unused too.
+_qt_drop = [
+	'PySide6/Qt/translations/',
+	'PySide6/Qt/plugins/platforminputcontexts/libqtvirtualkeyboardplugin',
+	'PySide6/Qt/plugins/imageformats/libqpdf',
+	'PySide6/Qt/plugins/tls/',
+	'PySide6/Qt/plugins/networkinformation/',
+	'PySide6/Qt/plugins/egldeviceintegrations/',
+	'PySide6/Qt/plugins/generic/',
+	'PySide6/Qt/plugins/platforms/libqvnc',
+	'PySide6/Qt/plugins/platforms/libqlinuxfb',
+	'PySide6/Qt/plugins/platforms/libqeglfs',
+	'PySide6/Qt/plugins/platforms/libqvkkhrdisplay',
+	'PySide6/Qt/lib/libQt6Quick',
+	'PySide6/Qt/lib/libQt6Qml',
+	'PySide6/Qt/lib/libQt6VirtualKeyboard',
+	'PySide6/Qt/lib/libQt6Pdf',
+	'PySide6/Qt/lib/libQt6Network',
+	'PySide6/Qt/lib/libQt6DataVisualization',
+	'PySide6/Qt/lib/libQt6EglFS',
+]
+
+def _qt_keep(entry):
+	dest = entry[0].replace(os.sep, '/')
+	return not any(dest.startswith(p) for p in _qt_drop)
+
+a.binaries = [b for b in a.binaries if _qt_keep(b)]
+a.datas = [d for d in a.datas if _qt_keep(d)]
+
 pyz = PYZ(a.pure)
 
 exe = EXE(
