@@ -12,6 +12,7 @@ from colorama import init as colorama_init, Fore, Back, Style
 import argparse
 from dataclasses import dataclass
 import tempfile
+import threading
 import os
 from pathlib import Path
 
@@ -22,6 +23,7 @@ from PySide6.QtSvg import QSvgRenderer
 from superqt.fonticon import icon, spin, pulse
 # from fonticon_fa6 import FA6S
 
+from pydaui.applets import conf
 from pydaui.connection import *
 from pydaui.ui.menu import *
 from pydaui.ui.connect_window import ConnectWindow, ConnectingWindow
@@ -91,8 +93,19 @@ class MdiArea(QMdiArea):
 
 class MainWindow(QMainWindow):
 
+	#: The caption when no device is connected or it cannot be described.
+	CAPTION = 'pydaui'
+
+	#: The conf nodes describing the connected device in the caption: its hostname, port and version.
+	CAPTION_PATHS = (['system', 'hostname'], ['system', 'firmware', 'port'], ['system', 'firmware', 'version'])
+
+	#: Delivers the (uri, values of CAPTION_PATHS) read off the GUI thread.
+	_captionRead = Signal(str, list)
+
 	def __init__(self, connection, settings):
 		super().__init__()
+		self.setWindowTitle(self.CAPTION)
+		self._captionRead.connect(self._setCaption)
 
 		self._connection = connection
 		self._settings = settings
@@ -129,10 +142,43 @@ class MainWindow(QMainWindow):
 		# The open windows of the menus by their class, only one of each is shown.
 		self._windows = {}
 
+		self._connection.connectionChanged.connect(self._updateCaption)
+
+	@Slot(object)
+	def _updateCaption(self, uri):
+		"""Show the hostname, port and firmware version of the connected device as
+		``<hostname> (<port>, <version>)``, read from its conf tree off the GUI thread."""
+		self.setWindowTitle(self.CAPTION)
+		interface = self._connection.findInterface(conf.PROTOCOL)
+		if uri is None or interface is None:
+			return
+
+		def read():
+			try:
+				values = conf.read_values(self._connection, interface, self.CAPTION_PATHS)
+			except Exception as e:
+				logging.getLogger(self.__class__.__name__).info(f'cannot read the device description: {e}')
+				return
+			self._captionRead.emit(uri, values)
+
+		threading.Thread(target=read, name='caption', daemon=True).start()
+
+	@Slot(str, list)
+	def _setCaption(self, uri, values):
+		# Read for an earlier connection.
+		if uri != self._connection.uri:
+			return
+		hostname, port, version = values
+		# Without the build metadata, like the firmware list of the updates.
+		version = version.partition('+')[0] if version else None
+		details = ', '.join(value for value in (port, version) if value)
+		caption = hostname or self.CAPTION
+		self.setWindowTitle(f'{caption} ({details})' if details else caption)
+
 	@Slot(object)
 	def _openApplet(self, instance):
 		try:
-			window = instance.open(self._connection)
+			window = instance.open(self._connection, self._settings)
 		except Exception as e:
 			QMessageBox.warning(self, instance.applet.title, 'Cannot open %s:\n\n%s' % (instance.applet.title, e))
 			return

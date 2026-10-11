@@ -5,7 +5,7 @@
 groups = ["default", "build"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:ecaf7f9dcadfd72c8e3c5eba66c990e621153e71a0fd19ab96e2ee686e8d621e"
+content_hash = "sha256:18ea59abfaccbd1fdf3ce76e6e7ec903af3804e15efa9631eab08f35d3e74625"
 
 [[metadata.targets]]
 requires_python = ">=3.13,<3.14"
@@ -432,34 +432,34 @@ files = [
 
 [[package]]
 name = "pynbus2"
-version = "0.2.0"
+version = "0.2.1"
 requires_python = ">=3.8"
-path = "./vendor/pynbus2-0.2.0.tar.gz"
+path = "./vendor/pynbus2-0.2.1.tar.gz"
 summary = "Python client library for the plumCore nbus2 messaging bus"
 groups = ["default"]
 files = [
-    {file = "pynbus2-0.2.0.tar.gz", hash = "sha256:c551b754c8894dbb028928b784c07388eefd8dbc876a75f3003a2eb66cd0d045"},
+    {file = "pynbus2-0.2.1.tar.gz", hash = "sha256:1d2376dc08f186a3bbb62927928c5fbc350d768d0a604615b1b5426c7a685c84"},
 ]
 
 [[package]]
 name = "pynbus2"
-version = "0.2.0"
+version = "0.2.1"
 extras = ["ble", "serial", "swd"]
 requires_python = ">=3.8"
-path = "./vendor/pynbus2-0.2.0.tar.gz"
+path = "./vendor/pynbus2-0.2.1.tar.gz"
 summary = "Python client library for the plumCore nbus2 messaging bus"
 groups = ["default"]
 dependencies = [
     "cbor2>=5",
     "cbor2>=5",
     "cbor2>=5",
-    "pynbus2 @ file:///${PROJECT_ROOT}/vendor/pynbus2-0.2.0.tar.gz",
+    "pynbus2 @ file:///${PROJECT_ROOT}/vendor/pynbus2-0.2.1.tar.gz",
     "pyocd>=0.36",
     "pyserial>=3.4",
     "simplepyble>=0.7",
 ]
 files = [
-    {file = "pynbus2-0.2.0.tar.gz", hash = "sha256:c551b754c8894dbb028928b784c07388eefd8dbc876a75f3003a2eb66cd0d045"},
+    {file = "pynbus2-0.2.1.tar.gz", hash = "sha256:1d2376dc08f186a3bbb62927928c5fbc350d768d0a604615b1b5426c7a685c84"},
 ]
 
 [[package]]

@@ -5,6 +5,9 @@
 # Copyright (c) 2026, Marek Koza (qyx@krtko.org)
 # All rights reserved.
 
+import logging
+import threading
+
 from PySide6.QtCore import *
 from PySide6.QtWidgets import *
 from PySide6.QtGui import *
@@ -82,8 +85,9 @@ class RibbonPanel(QDockWidget):
 			self.setTitleBarWidget(title_bar)
 		self._separator.setVisible(not tabbed and not self.isFloating())
 
-	def setGroups(self, groups, uri):
-		"""Show a button for every applet instance in ``groups``, as returned by :func:`registry.available`."""
+	def setGroups(self, groups, uri, probing=False):
+		"""Show a button for every applet instance in ``groups``, as returned by :func:`registry.available`.
+		``probing`` tells the device is being asked for more applets of the panel."""
 		self._bar.clear()
 		for group in groups:
 			if self._bar.actions():
@@ -92,7 +96,11 @@ class RibbonPanel(QDockWidget):
 				self._bar.addWidget(self._button(instance, marked=len(group) > 1))
 
 		if not groups:
-			hint = QLabel(self.tr('Not connected') if uri is None else self.tr('Not available'))
+			if uri is None:
+				text = self.tr('Not connected')
+			else:
+				text = self.tr('Checking...') if probing else self.tr('Not available')
+			hint = QLabel(text)
 			hint.setStyleSheet('color: #888; padding: 8px;')
 			self._bar.addWidget(hint)
 
@@ -113,6 +121,38 @@ class RibbonPanel(QDockWidget):
 		return button
 
 
+class _Prober(QObject):
+	"""Runs the probes of the applet instances of :func:`registry.candidates` off the GUI thread, one after
+	another, the device answers one request at a time anyway. ``found`` carries each instance whose probe
+	returns a context, with the context set, ``done`` ends it."""
+
+	found = Signal(object)
+	done = Signal()
+
+	def __init__(self, connection, instances):
+		super().__init__()
+		self._logger = logging.getLogger(self.__class__.__name__)
+		self._connection = connection
+		self._instances = instances
+
+	def start(self):
+		threading.Thread(target=self._run, name='applet-probe', daemon=True).start()
+
+	def _run(self):
+		for instance in self._instances:
+			try:
+				context = instance.applet.probe(self._connection, instance.interface)
+			except Exception as e:
+				self._logger.info(f'{instance.applet.title} on interface {instance.interface!r} not available: {e}')
+				continue
+			if context is None:
+				self._logger.info(f'{instance.applet.title} on interface {instance.interface!r} not available')
+				continue
+			self._logger.info(f'{instance.applet.title} available on interface {instance.interface!r}')
+			self.found.emit(registry.probed(instance, context))
+		self.done.emit()
+
+
 class Ribbon(QObject):
 	"""Adds a :class:`RibbonPanel` for each of :data:`registry.PANELS` to the top of ``window``, side by
 	side, and refills them on every connection change."""
@@ -128,6 +168,12 @@ class Ribbon(QObject):
 		# title bar to drag them by.
 		window.setDockOptions(window.dockOptions() | QMainWindow.AllowNestedDocks | QMainWindow.GroupedDragging)
 		window.setTabPosition(Qt.TopDockWidgetArea, QTabWidget.North)
+
+		# The applet instances offered, grouped like registry.available() returns them, and the prober
+		# asking the device for more, None when it is not asking.
+		self._groups = []
+		self._prober = None
+		self._probing = set()
 
 		self._panels = {}
 		for name, panel_icon in registry.PANELS:
@@ -155,6 +201,38 @@ class Ribbon(QObject):
 
 	@Slot(object)
 	def _connectionChanged(self, uri):
-		groups = registry.available(self._connection.interfaces)
+		if self._prober is not None:
+			# Its results are for the previous connection.
+			self._prober.blockSignals(True)
+			self._prober = None
+		self._groups = registry.available(self._connection.interfaces)
+		candidates = registry.candidates(self._connection.interfaces) if uri is not None else []
+		# The panels the prober may add to.
+		self._probing = {group[0].applet.panel for group in candidates}
+		if candidates:
+			self._prober = _Prober(self._connection, [instance for group in candidates for instance in group])
+			self._prober.found.connect(self._found)
+			self._prober.done.connect(self._probed)
+			self._prober.start()
+		self._updatePanels()
+
+	@Slot(object)
+	def _found(self, instance):
+		for group in self._groups:
+			if group[0].applet is instance.applet:
+				group.append(instance)
+				break
+		else:
+			self._groups = registry.order(self._groups + [[instance]])
+		self._updatePanels()
+
+	@Slot()
+	def _probed(self):
+		self._prober = None
+		self._probing = set()
+		self._updatePanels()
+
+	def _updatePanels(self):
 		for name, panel in self._panels.items():
-			panel.setGroups([group for group in groups if group[0].applet.panel == name], uri)
+			panel.setGroups([group for group in self._groups if group[0].applet.panel == name], self._connection.uri,
+			                probing=name in self._probing)

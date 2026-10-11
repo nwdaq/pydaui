@@ -132,6 +132,40 @@ class Icons:
 		</svg>""")
 
 	@staticmethod
+	def system():
+		"""The system icon: three stacked layers seen from above, the top one in the primary colour."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<g stroke-width="1.1" stroke-linejoin="round">
+				<path fill="{Icons.LIGHT_GRAY}" stroke="{Icons.DARK_GRAY}" d="M12 13.5 L22 17.5 L12 21.5 L2 17.5 Z"/>
+				<path fill="{Icons.WHITE}" stroke="{Icons.DARK_GRAY}" d="M12 8.5 L22 12.5 L12 16.5 L2 12.5 Z"/>
+				<path fill="{Icons.PRIMARY_LIGHT}" stroke="{Icons.PRIMARY}" d="M12 3 L22 7 L12 11 L2 7 Z"/>
+			</g>
+		</svg>""")
+
+	@staticmethod
+	def update():
+		"""The firmware update icon: a gray chip with a blue badge in front of it, upper right, holding an
+		arrow pointing up."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<g stroke="{Icons.DARK_GRAY}" stroke-width="1.1" stroke-linejoin="round" fill="{Icons.LIGHT_GRAY}">
+				<path d="M0.6 9 H2.5 M0.6 12.5 H2.5 M0.6 16 H2.5 M6 23.4 V21.5 M9.5 23.4 V21.5 M13 23.4 V21.5"/>
+				<rect x="2.5" y="6.5" width="14" height="15" rx="1.5"/>
+			</g>
+			<circle cx="16.5" cy="7.5" r="6.8" fill="{Icons.PRIMARY_LIGHT}" stroke="{Icons.PRIMARY}" stroke-width="1.1"/>
+			<path fill="{Icons.PRIMARY}" d="M16.5 3 L20.3 7.3 H18 V12 H15 V7.3 H12.7 Z"/>
+		</svg>""")
+
+	@staticmethod
+	def reset():
+		"""The reset icon: a power symbol, a ring open at the top with a bar through the gap."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<g stroke="{Icons.DARK_RED}" stroke-width="1.1" stroke-linejoin="round">
+				<path fill="{Icons.LIGHT_RED}" d="M8.3 4.6 V8.4 A5.6 5.6 0 1 0 15.7 8.4 V4.6 A9 9 0 1 1 8.3 4.6 Z"/>
+				<rect x="10.3" y="1.5" width="3.4" height="10" rx="1" fill="{Icons.RED}"/>
+			</g>
+		</svg>""")
+
+	@staticmethod
 	def conf():
 		"""The configuration icon: a gray gear in the back and a smaller blue one in front of it, lower
 		right."""

@@ -7,7 +7,6 @@
 
 import html
 import threading
-from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -18,6 +17,7 @@ from superqt.fonticon import icon, spin, pulse
 
 from pynbus2.uri import parse_uri, split_serial_path
 
+from pydaui import products
 from pydaui.connection import *
 from pydaui.ui.helpers import Admonition
 
@@ -69,21 +69,6 @@ class SwdTab(ConnectWindowTab):
 	ICON = 'mdi7.bug-outline'
 	ENABLED = True
 
-	@dataclass
-	class Product:
-		pn: str
-		version: str
-		#: pyocd target type.
-		mcu: str
-		#: CMSIS pack with the target and its flash algorithm, relative to the pydaui package.
-		pack: str
-
-	#: The products a target can be selected as. SWD does not identify the product, it must be known.
-	products = [
-		Product('v35v-ctrl', '1.0.0', 'STM32G491CCUx', 'Keil.STM32G4xx_DFP.2.0.0.pack'),
-		Product('nwdaq-main-hh1', '1.0.0', 'STM32U575VITx', 'Keil.STM32U5xx_DFP.3.2.0.pack'),
-	]
-
 	def __init__(self, connection, parent=None):
 		super().__init__(connection, parent=parent)
 		# Keep worker references alive until their signal has been delivered.
@@ -118,7 +103,8 @@ class SwdTab(ConnectWindowTab):
 		# Add list of devices/products
 		dev = QComboBox()
 		dev.setIconSize(QSize(24, 24))
-		for p in self.products:
+		# SWD does not identify the product, it must be known.
+		for p in products.load():
 			dev.addItem(f'{p.pn} ({p.version})', p)
 		for i in range(dev.count()):
 			dev.setItemIcon(i, icon('mdi7.memory', color='#888', scale_factor=1))
@@ -154,13 +140,15 @@ class SwdTab(ConnectWindowTab):
 		self._probe_status.setText('Looking for debug probes failed: %s' % message)
 
 	def uri(self):
-		"""The probe URI with the selected product's target and pack, reaching its virtual flash service."""
+		"""The probe URI with the selected product's target and pack, reaching its virtual flash service. The
+		product selects the flash partitions it is split into, see :mod:`pydaui.connection.swd_partitions`."""
 		probe_uri = self._probe_cb.currentData()
 		product = self._product_cb.currentData()
 		if probe_uri is None or product is None:
 			return None
 		pack = Path(__file__).resolve().parent.parent / product.pack
-		return '%s?%s' % (probe_uri, urlencode({'target': product.mcu, 'pack': str(pack)}))
+		return '%s?%s' % (probe_uri, urlencode({'target': product.mcu, 'pack': str(pack), 'product': product.pn,
+		                                        'version': product.version}))
 
 
 class UsbTab(ConnectWindowTab):

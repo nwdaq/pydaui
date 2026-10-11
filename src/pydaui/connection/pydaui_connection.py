@@ -24,6 +24,14 @@ import pynbus2
 from PySide6.QtCore import QObject, Signal, Slot
 
 
+class SocketConnection:
+	"""What the protocol clients (e.g. the flash and conf clients) need of a connection, over a bare
+	pynbus2 socket. For a short exchange off the GUI thread, without a tracked side connection."""
+
+	def __init__(self, socket):
+		self.socket = socket
+
+
 class PyDauiConnection(QObject):
 
 	connectionChanged = Signal(object)

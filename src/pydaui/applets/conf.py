@@ -22,6 +22,7 @@ from PySide6.QtCore import *
 from PySide6.QtWidgets import *
 from PySide6.QtGui import *
 
+from pydaui.connection import SocketConnection
 from pydaui.ui.helpers import AppletWindow, DauiButton, StyledTreeWidget
 from pydaui.ui.icons import Icons
 
@@ -256,6 +257,18 @@ class ConfClient:
 			raise ValueError('no response')
 		if r.get('err'):
 			raise ValueError(r.get('err'))
+
+
+def read_values(connection, interface, paths):
+	"""The values of the conf nodes at ``paths`` (lists of names) on the conf ``interface`` of the
+	``connection``, formatted for display, ``None`` for a node which cannot be read. It asks the device over
+	a socket of its own, run it off the GUI thread."""
+	socket = connection.nbus.socket(interface, 0)
+	try:
+		client = ConfClient(SocketConnection(socket))
+		return [client.read(path) for path in paths]
+	finally:
+		socket.close()
 
 
 #: The conf types which can be edited as text.

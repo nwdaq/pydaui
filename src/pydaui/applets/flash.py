@@ -70,9 +70,16 @@ class FlashClient:
 	#: CBOR framing, so 128 B works on every transport (as in plumCore tools/proto-nbus-flash.py).
 	TRANSFER_BLOCK = 128
 
-	def __init__(self, connection):
+	#: Room for the request framing in a message, the largest block is the interface MTU less this (as in
+	#: the firmware, NBUS_FLASH_RX_BUF_LEN - NBUS_FLASH_BLOCK_LEN).
+	FRAMING = 64
+
+	def __init__(self, connection, mtu=None):
+		"""``mtu`` is the MTU the flash interface advertises. It allows writing pages larger than
+		:attr:`TRANSFER_BLOCK` at once, e.g. the whole flash algorithm pages over a debug probe."""
 		self._connection = connection
 		self._lock = threading.Lock()
+		self._max_block = mtu - self.FRAMING if mtu else flash_service.BLOCK_LEN
 
 	def call(self, req: dict, timeout=None, retries=None):
 		"""Send a request and return the decoded response map. Raises ``ValueError`` if there is no valid
@@ -176,10 +183,10 @@ class FlashClient:
 		writing and verifying (``'write'`` and ``'verify'``, the padded data size) starts, ``progress`` with the bytes done so far in
 		the stage. ``abort`` is like in :meth:`erase`. Raises ``ValueError`` with the reason if it fails.
 		"""
-		# Whole pages in each transfer block.
+		# Whole pages in each transfer block, a single page if it is larger.
 		block = page_size * max(1, self.TRANSFER_BLOCK // page_size)
-		if block > flash_service.BLOCK_LEN:
-			raise ValueError(f'page size {page_size} B is larger than a transfer block')
+		if block > self._max_block:
+			raise ValueError(f'page size {page_size} B is larger than the {self._max_block} B blocks the interface takes')
 		data = bytes(data) + b'\xff' * (-len(data) % page_size)
 		if len(data) > size:
 			raise ValueError(f'{len(data)} B do not fit the partition of {size} B')
@@ -259,6 +266,11 @@ class FlashClient:
 				self.call({'c': 'close', 'sid': sid})
 			except ValueError:
 				pass
+
+
+def interface_mtu(connection, name):
+	"""The MTU the interface ``name`` of the ``connection`` advertises, ``None`` if it advertises none."""
+	return next((desc.get('mtu') for n, desc in connection.interfaces if n == name), None)
 
 
 class _PartitionLoader(QObject):
@@ -958,7 +970,7 @@ class FlashWindow(AppletWindow):
 		connection.connectionChanged.connect(self._connectionChanged)
 
 		self.setWindowTitle(f'Flash ({name})')
-		self._partitions = FlashPartitions(FlashClient(self._side))
+		self._partitions = FlashPartitions(FlashClient(self._side, interface_mtu(connection, name)))
 		self.setWidget(self._partitions)
 		self.resize(800, 400)
 

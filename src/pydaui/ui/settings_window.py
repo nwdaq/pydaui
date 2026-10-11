@@ -45,6 +45,15 @@ class SettingsSection(QWidget):
 		box.toggled.connect(lambda checked: self._set(key, checked))
 		return box
 
+	def _spinBox(self, key, default, minimum, maximum):
+		"""A spin box showing the integer setting ``key``, changing it when changed."""
+		box = QSpinBox()
+		box.setRange(minimum, maximum)
+		value = self._settings.get(key, default)
+		box.setValue(value if isinstance(value, int) else default)
+		box.valueChanged.connect(lambda value: self._set(key, value))
+		return box
+
 	def _set(self, key, value):
 		"""Change the setting ``key`` and save the settings right away."""
 		self._settings.set(key, value)
@@ -140,8 +149,12 @@ class RepositoriesSection(SettingsSection):
 	NAME = 'plumCore repositories'
 
 	#: The repositories, a list of ``{"name": ..., "url": ..., "auth": ...}``. ``auth`` is None when the
-	#: repository needs no authentication.
+	#: repository needs no authentication or its credentials are not saved, else
+	#: ``{"type": "basic", "username": ..., "password": ...}`` for HTTP basic authentication.
 	REPOSITORIES = 'plumcore.repositories'
+	#: The number of the latest firmware files downloaded when a repository is updated.
+	LATEST = 'plumcore.latest'
+	LATEST_DEFAULT = 5
 
 	def __init__(self, settings):
 		super().__init__(settings)
@@ -167,6 +180,15 @@ class RepositoriesSection(SettingsSection):
 
 		self._group(self.tr('Repositories'), self._list, button_row)
 		self._form_group = self._editGroup()
+
+		latest = QHBoxLayout()
+		latest.setContentsMargins(0, 0, 0, 0)
+		latest.addWidget(QLabel(self.tr('Number of the latest firmware files to download:')))
+		latest.addWidget(self._spinBox(self.LATEST, self.LATEST_DEFAULT, 1, 100))
+		latest.addStretch(1)
+		latest_row = QWidget()
+		latest_row.setLayout(latest)
+		self._group(self.tr('Repository updates'), latest_row)
 
 		# The index of the repository being edited, None when adding one.
 		self._editing = None
@@ -206,16 +228,46 @@ class RepositoriesSection(SettingsSection):
 
 		return self._group('', field_rows, button_row)
 
+	@classmethod
+	def repositories(cls, settings):
+		"""The repositories in the ``settings``."""
+		repositories = settings.get(cls.REPOSITORIES, [])
+		return [r for r in repositories if isinstance(r, dict)] if isinstance(repositories, list) else []
+
+	@classmethod
+	def auth(cls, settings, url):
+		"""The saved ``(username, password)`` of the repository at ``url``, ``None`` if there are none."""
+		for repository in cls.repositories(settings):
+			auth = repository.get('auth')
+			if repository.get('url') == url and isinstance(auth, dict) and auth.get('type') == 'basic':
+				return auth.get('username', ''), auth.get('password', '')
+		return None
+
+	@classmethod
+	def saveAuth(cls, settings, url, username, password):
+		"""Save the HTTP basic authentication credentials of the repository at ``url``."""
+		repositories = cls.repositories(settings)
+		for repository in repositories:
+			if repository.get('url') == url:
+				repository['auth'] = {'type': 'basic', 'username': username, 'password': password}
+		settings.set(cls.REPOSITORIES, repositories)
+		settings.save()
+
+	@classmethod
+	def latest(cls, settings):
+		"""The number of the latest firmware files to download in the ``settings``."""
+		latest = settings.get(cls.LATEST, cls.LATEST_DEFAULT)
+		return latest if isinstance(latest, int) and latest > 0 else cls.LATEST_DEFAULT
+
 	def _repositories(self):
-		repositories = self._settings.get(self.REPOSITORIES, [])
-		return repositories if isinstance(repositories, list) else []
+		return self.repositories(self._settings)
 
 	def _load(self):
 		self._list.clear()
 		for repository in self._repositories():
-			auth = repository.get('auth')
+			auth = self.auth(self._settings, repository.get('url'))
 			item = QTreeWidgetItem([repository.get('name', ''), repository.get('url', ''),
-				auth if auth else self.tr('none')])
+				self.tr('basic (%s)') % auth[0] if auth else self.tr('none')])
 			self._list.styleName(item)
 			self._list.addTopLevelItem(item)
 

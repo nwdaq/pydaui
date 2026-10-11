@@ -1,0 +1,29 @@
+{
+	"products": [
+		{
+			"pn": "v35v-ctrl",
+			"version": "1.0.0",
+			"mcu": "STM32G491CCUx",
+			"pack": "Keil.STM32G4xx_DFP.2.0.0.pack",
+			"partitions": [
+				{"name": "bootloader", "volume": "flash0", "offset": "0x00000", "size": "0x0f000"},
+				{"name": "bootconf",   "volume": "flash0", "offset": "0x0f000", "size": "0x00800"},
+				{"name": "mib",        "volume": "flash0", "offset": "0x0f800", "size": "0x00800"},
+				{"name": "app",        "volume": "flash0", "offset": "0x10000", "size": "0x20000"},
+				{"name": "update",     "volume": "flash0", "offset": "0x30000", "size": "0x10000"}
+			]
+		},
+		{
+			"pn": "nwdaq-main-hh1",
+			"version": "1.0.0",
+			"mcu": "STM32U575VITx",
+			"pack": "Keil.STM32U5xx_DFP.3.2.0.pack",
+			"partitions": [
+				{"name": "bootloader", "volume": "flash0", "offset": "0x00000", "size": "0x1c000"},
+				{"name": "bootconf",   "volume": "flash0", "offset": "0x1c000", "size": "0x02000"},
+				{"name": "mib",        "volume": "flash0", "offset": "0x1e000", "size": "0x02000"},
+				{"name": "app",        "volume": "flash0", "offset": "0x20000", "size": "0x80000"}
+			]
+		}
+	]
+}

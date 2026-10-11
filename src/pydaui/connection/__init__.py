@@ -15,11 +15,14 @@ to other services on the same target.
 
 from pynbus2 import NbusError, UriError, NotConnectedError
 
-from .pydaui_connection import PyDauiConnection
+from .pydaui_connection import PyDauiConnection, SocketConnection
+# Registers the swd transport splitting the flash into the partitions of the known products.
+from . import swd_partitions
 
 __all__ = [
 	'NbusError',
 	'UriError',
 	'NotConnectedError',
 	'PyDauiConnection',
+	'SocketConnection',
 ]
