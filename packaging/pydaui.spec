@@ -113,6 +113,9 @@ a.datas = [d for d in a.datas if _qt_keep(d)]
 
 pyz = PYZ(a.pure)
 
+# MinGW strip corrupts the MSVC built DLLs, which carry no symbols anyway
+_strip = sys.platform != 'win32'
+
 exe = EXE(
     pyz,
     a.scripts,
@@ -121,7 +124,7 @@ exe = EXE(
     name='pydaui',
     debug=False,
     bootloader_ignore_signals=False,
-    strip=True,
+    strip=_strip,
     upx=True,
     console=True,
     disable_windowed_traceback=False,
@@ -134,7 +137,7 @@ coll = COLLECT(
     exe,
     a.binaries,
     a.datas,
-    strip=True,
+    strip=_strip,
     upx=True,
     upx_exclude=[],
     name='pydaui',
