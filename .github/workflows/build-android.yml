@@ -35,7 +35,7 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y autoconf automake libtool libltdl-dev pkg-config \
           zlib1g-dev libncurses-dev libffi-dev libssl-dev unzip zip cmake autopoint gettext
-        pip install PySide6==6.8.2.1 jinja2 pkginfo tqdm buildozer==1.5.0 cython==0.29.33 setuptools
+        pip install PySide6==6.10.3 jinja2 pkginfo tqdm buildozer==1.5.0 cython==0.29.33 setuptools
 
     # The Android SDK downloaded by buildozer and the NDK downloaded by pyside6-android-deploy
     - name: Cache the Android SDK and NDK
