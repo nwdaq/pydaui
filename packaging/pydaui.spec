@@ -89,6 +89,19 @@ _qt_drop = [
 	'PySide6/Qt/lib/libQt6Network',
 	'PySide6/Qt/lib/libQt6DataVisualization',
 	'PySide6/Qt/lib/libQt6EglFS',
+	# The same on Windows, where PySide6 has a flat layout
+	'PySide6/translations/',
+	'PySide6/plugins/platforminputcontexts/qtvirtualkeyboardplugin',
+	'PySide6/plugins/imageformats/qpdf',
+	'PySide6/plugins/tls/',
+	'PySide6/plugins/networkinformation/',
+	'PySide6/plugins/generic/',
+	'PySide6/Qt6Quick',
+	'PySide6/Qt6Qml',
+	'PySide6/Qt6VirtualKeyboard',
+	'PySide6/Qt6Pdf',
+	'PySide6/Qt6Network',
+	'PySide6/Qt6DataVisualization',
 ]
 
 def _qt_keep(entry):
