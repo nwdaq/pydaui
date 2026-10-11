@@ -24,6 +24,7 @@ from superqt.fonticon import icon, spin, pulse
 # from fonticon_fa6 import FA6S
 
 import pydaui
+from pydaui import bluetooth
 from pydaui.applets import conf
 from pydaui.connection import *
 from pydaui.ui.menu import *
@@ -287,6 +288,7 @@ def main():
 
 	args = parser.parse_args()
 	colorama_init()
+	bluetooth.install()
 
 	l = logging.INFO
 	if args.debug:

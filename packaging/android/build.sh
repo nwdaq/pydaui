@@ -84,7 +84,11 @@ app = spec['app']
 app['requirements'] += ',' + ','.join(requirements)
 app['source.include_exts'] = 'py,png,jpg,svg,json,qml,js'
 permissions = [p.strip() for p in app.get('android.permissions', '').split(',') if p.strip()]
-for p in ['android.permission.INTERNET', 'android.permission.ACCESS_NETWORK_STATE']:
+# BLE needs the location up to Android 11, BLUETOOTH_SCAN and BLUETOOTH_CONNECT from Android 12
+for p in ['android.permission.INTERNET', 'android.permission.ACCESS_NETWORK_STATE',
+          'android.permission.BLUETOOTH', 'android.permission.BLUETOOTH_ADMIN',
+          'android.permission.BLUETOOTH_SCAN', 'android.permission.BLUETOOTH_CONNECT',
+          'android.permission.ACCESS_FINE_LOCATION', 'android.permission.ACCESS_COARSE_LOCATION']:
 	if p not in permissions:
 		permissions.append(p)
 app['android.permissions'] = ','.join(permissions)
