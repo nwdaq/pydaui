@@ -30,6 +30,7 @@ class SocketConnection:
 
 	def __init__(self, socket):
 		self.socket = socket
+		self.lock = threading.Lock()
 
 
 class PyDauiConnection(QObject):
@@ -57,6 +58,12 @@ class PyDauiConnection(QObject):
 		self._connecting = None
 		self._attempt = None
 		self._opened.connect(self._finishAsync)
+		#: Serializes the request/response exchanges on the socket, the clients sharing it (e.g. the conf
+		#: clients over a :meth:`sharedSide`) take it for each exchange.
+		self.lock = threading.Lock()
+		# The side connections shared by everything talking to an interface, by its name.
+		self._shared = {}
+		self._shared_lock = threading.Lock()
 
 	def connectUri(self, uri):
 		"""Connect to ``uri``, blocking until connected. Raises when connecting fails."""
@@ -163,6 +170,7 @@ class PyDauiConnection(QObject):
 		self._socket = None
 		self._uri = None
 		self._interfaces = []
+		self._shared = {}
 		self.connectionChanged.emit(None)
 
 	def connectSide(self, id, ep):
@@ -181,6 +189,19 @@ class PyDauiConnection(QObject):
 		side._parent = self
 		self._children.append(side)
 		return side
+
+	def sharedSide(self, name):
+		"""The side connection to the interface ``name`` shared by everything talking to it, opened on the
+		first call (see :meth:`connectSide`) and kept until this connection is disconnected. An interface
+		serving a single session (e.g. conf) refuses a second side connection, so its users share this
+		one, taking its :attr:`lock` for each exchange. Do not disconnect it. It may be called from any
+		thread."""
+		with self._shared_lock:
+			side = self._shared.get(name)
+			if side is None or not side.connected:
+				side = self.connectSide(name, 0)
+				self._shared[name] = side
+			return side
 
 	def findInterface(self, protocol):
 		"""The name of the topmost discovered interface speaking ``protocol``: the one with the fewest path

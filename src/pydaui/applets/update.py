@@ -497,20 +497,13 @@ class _ResetCheck(QObject):
 
 	def _run(self):
 		try:
-			# The interface is addressed by its path, pynbus2 still asks for an endpoint it does not use.
-			socket = self._connection.nbus.socket(self._interface, 0)
-		except Exception:
-			self.checked.emit(False)
-			return
-		try:
-			nodes = conf.ConfClient(SocketConnection(socket))._children(RESET_PATH[:-1])
+			# The conf service serves a single session, shared with the other users of the interface.
+			nodes = conf.ConfClient(self._connection.sharedSide(self._interface))._children(RESET_PATH[:-1])
 			node = next((n for n in nodes if n.get('n') == RESET_PATH[-1]), None)
 			self.checked.emit(node is not None and node.get('t') == conf.CONF_B and
 			                  bool(node.get('f', 0) & conf.CONF_WRITE))
 		except Exception:
 			self.checked.emit(False)
-		finally:
-			socket.close()
 
 
 class UpdatePanel(QWidget):
@@ -866,13 +859,12 @@ class UpdatePanel(QWidget):
 			return
 		self._logger.info(f'resetting the device over interface {self._conf_interface!r}')
 		try:
-			# The interface is addressed by its path, the endpoint is not used.
-			socket = self._connection.nbus.socket(self._conf_interface, 0)
-			socket.send(cbor2.dumps({'c': 'write', 'p': RESET_PATH, 't': conf.CONF_B, 'val': True}))
+			side = self._connection.sharedSide(self._conf_interface)
+			with side.lock:
+				side.send(cbor2.dumps({'c': 'write', 'p': RESET_PATH, 't': conf.CONF_B, 'val': True}))
 		except Exception as e:
 			QMessageBox.warning(self, self.tr('Reset & Update'), self.tr('Resetting the device failed: %s') % e)
 			return
-		# Closes the socket too.
 		self._connection.disconnectUri()
 
 	def abort(self):

@@ -78,7 +78,8 @@ class FlashClient:
 		"""``mtu`` is the MTU the flash interface advertises. It allows writing pages larger than
 		:attr:`TRANSFER_BLOCK` at once, e.g. the whole flash algorithm pages over a debug probe."""
 		self._connection = connection
-		self._lock = threading.Lock()
+		# Shared by the clients on the same connection.
+		self._lock = connection.lock
 		self._max_block = mtu - self.FRAMING if mtu else flash_service.BLOCK_LEN
 
 	def call(self, req: dict, timeout=None, retries=None):

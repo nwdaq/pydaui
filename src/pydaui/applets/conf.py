@@ -22,7 +22,6 @@ from PySide6.QtCore import *
 from PySide6.QtWidgets import *
 from PySide6.QtGui import *
 
-from pydaui.connection import SocketConnection
 from pydaui.ui.helpers import AppletWindow, DauiButton, StyledTreeWidget
 from pydaui.ui.icons import Icons
 
@@ -107,7 +106,8 @@ class ConfClient:
 
 	def __init__(self, connection):
 		self._connection = connection
-		self._lock = threading.Lock()
+		# Shared by the clients on the same connection, see PyDauiConnection.sharedSide().
+		self._lock = connection.lock
 		self._queue = ThreadPoolExecutor(max_workers=1, thread_name_prefix='conf-change')
 
 	def submit(self, fn):
@@ -262,13 +262,9 @@ class ConfClient:
 def read_values(connection, interface, paths):
 	"""The values of the conf nodes at ``paths`` (lists of names) on the conf ``interface`` of the
 	``connection``, formatted for display, ``None`` for a node which cannot be read. It asks the device over
-	a socket of its own, run it off the GUI thread."""
-	socket = connection.nbus.socket(interface, 0)
-	try:
-		client = ConfClient(SocketConnection(socket))
-		return [client.read(path) for path in paths]
-	finally:
-		socket.close()
+	the shared side connection to the interface, run it off the GUI thread."""
+	client = ConfClient(connection.sharedSide(interface))
+	return [client.read(path) for path in paths]
 
 
 #: The conf types which can be edited as text.
@@ -933,8 +929,8 @@ class ConfTree(QWidget):
 class ConfTreeWindow(AppletWindow):
 	"""The configuration tree served by an interface speaking the conf protocol on the connected device.
 
-	It opens its own side connection to the interface, closed with the window. The window closes when
-	the device is disconnected.
+	It talks over the side connection to the interface shared with the other users of the interface, the
+	conf service serves a single session. The window closes when the device is disconnected.
 	"""
 
 	def __init__(self, connection, name):
@@ -943,7 +939,7 @@ class ConfTreeWindow(AppletWindow):
 		self.setAttribute(Qt.WA_DeleteOnClose)
 
 		self._logger.info(f'opening the configuration tree on interface {name!r}')
-		self._side = connection.connectSide(name, 0)
+		self._side = connection.sharedSide(name)
 		self._connection = connection
 		connection.connectionChanged.connect(self._connectionChanged)
 
@@ -962,6 +958,4 @@ class ConfTreeWindow(AppletWindow):
 			self._connection.connectionChanged.disconnect(self._connectionChanged)
 			self._connection = None
 			self._conf.close()
-			# Already disconnected together with the device connection, if that is why it closes.
-			self._side.disconnectUri()
 		super().closeEvent(event)
