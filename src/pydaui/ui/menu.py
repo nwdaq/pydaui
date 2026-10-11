@@ -54,6 +54,8 @@ class HelpMenu(QMenu):
 
 class MainMenu(QToolBar):
 
+	#: The Disconnect button was clicked, the device is to be disconnected.
+	disconnectRequested = Signal()
 	settingsRequested = Signal()
 	quitRequested = Signal()
 	changelogRequested = Signal()
@@ -118,4 +120,4 @@ class MainMenu(QToolBar):
 
 	@Slot()
 	def _disconnectClicked(self):
-		self._connection.disconnectUri()
+		self.disconnectRequested.emit()

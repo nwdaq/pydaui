@@ -102,6 +102,28 @@ class UiSection(SettingsSection):
 		return Icons.window()
 
 
+class DeviceSection(SettingsSection):
+
+	NAME = 'Device'
+
+	#: Connect the last connected device on startup.
+	AUTO_CONNECT = 'device.auto_connect'
+	#: The URI of the last connected device, cleared when it is disconnected explicitly. Not shown in the
+	#: section.
+	LAST_URI = 'device.last_uri'
+
+	def __init__(self, settings):
+		super().__init__(settings)
+
+		self._group(self.tr('Device connection'),
+			self._checkBox(self.tr('Connect the last device automatically (unless disconnected explicitly)'),
+				self.AUTO_CONNECT))
+
+	@staticmethod
+	def sectionIcon():
+		return Icons.device()
+
+
 class _SectionList(QListWidget):
 	"""The list of sections, as wide as its widest item but at least the minimal width."""
 

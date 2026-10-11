@@ -24,10 +24,10 @@ from superqt.fonticon import icon, spin, pulse
 
 from pydaui.connection import *
 from pydaui.ui.menu import *
-from pydaui.ui.connect_window import ConnectWindow
+from pydaui.ui.connect_window import ConnectWindow, ConnectingWindow
 from pydaui.ui.about_window import AboutWindow
 from pydaui.ui.changelog_window import ChangelogWindow
-from pydaui.ui.settings_window import SettingsWindow, UiSection
+from pydaui.ui.settings_window import SettingsWindow, UiSection, DeviceSection
 from pydaui.ui.ribbon import Ribbon
 from pydaui.ui.style import DauiStyle
 from pydaui.settings import Settings
@@ -108,6 +108,7 @@ class MainWindow(QMainWindow):
 		self._overlay.hide()
 
 		self._main_menu = MainMenu(self._connection)
+		self._main_menu.disconnectRequested.connect(self._disconnect)
 		self._main_menu.settingsRequested.connect(lambda: self._openWindow(SettingsWindow, self._settings))
 		self._main_menu.quitRequested.connect(self.close)
 		self._main_menu.changelogRequested.connect(lambda: self._openWindow(ChangelogWindow))
@@ -142,6 +143,13 @@ class MainWindow(QMainWindow):
 			window.showMaximized()
 		else:
 			window.show()
+
+	@Slot()
+	def _disconnect(self):
+		"""Disconnect the device explicitly, it is not connected automatically on the next startup."""
+		self._settings.set(DeviceSection.LAST_URI, None)
+		self._settings.save()
+		self._connection.disconnectUri()
 
 	def _openWindow(self, window_class, *args):
 		"""Show the window of ``window_class``, opening it with ``args`` if it is not open yet."""
@@ -190,6 +198,26 @@ class DauiApplication(QApplication):
 
 		self._connect_window = ConnectWindow(self._connection, parent=self._main_window)
 
+		self._connection.connectionChanged.connect(self._connectionChanged)
+		# After the main window is shown, before the connect window opens.
+		QTimer.singleShot(0, self._autoConnect)
+
+	@Slot(object)
+	def _connectionChanged(self, uri):
+		# Remember the device to connect automatically on the next startup.
+		if uri:
+			self._settings.set(DeviceSection.LAST_URI, uri)
+			self._settings.save()
+
+	@Slot()
+	def _autoConnect(self):
+		"""Connect the last device if enabled, showing the connecting window over the main window. The
+		connect window opens when it fails or is cancelled."""
+		uri = self._settings.get(DeviceSection.LAST_URI)
+		if not self._settings.get(DeviceSection.AUTO_CONNECT, False) or not uri or self._connection.connected:
+			return
+		ConnectingWindow(self._connection, uri, parent=self._main_window).open()
+		self._connection.connectUriAsync(uri)
 
 	def exec(self):
 		super().exec()

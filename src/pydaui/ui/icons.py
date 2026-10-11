@@ -164,6 +164,20 @@ class Icons:
 		</svg>""")
 
 	@staticmethod
+	def device():
+		"""The device icon: a box with two status LEDs and a cable leaving it to the right."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<path fill="none" stroke="{Icons.DARK_GRAY}" stroke-width="1.6" stroke-linecap="round"
+				d="M18.5 12 H20 Q22.5 12 22.5 9.5 V5"/>
+			<g stroke="{Icons.PRIMARY}" stroke-width="1.1" stroke-linejoin="round">
+				<rect x="1.5" y="6.5" width="17" height="11" rx="1.5" fill="{Icons.PRIMARY_LIGHT}"/>
+				<rect x="4" y="9" width="7" height="6" rx="0.6" fill="{Icons.WHITE}"/>
+			</g>
+			<circle cx="14" cy="10" r="1.1" fill="{Icons.RED}"/>
+			<circle cx="14" cy="14" r="1.1" fill="{Icons.PRIMARY}"/>
+		</svg>""")
+
+	@staticmethod
 	def changelog():
 		"""The change log icon: a page with a folded corner and a bulleted list on it."""
 		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
