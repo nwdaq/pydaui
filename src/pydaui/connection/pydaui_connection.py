@@ -171,11 +171,13 @@ class PyDauiConnection(QObject):
 			self._parent._children.remove(self)
 			self._parent = None
 
-		self._logger.info(f'disconnecting from {self._uri}')
 		if self._owns_nbus:
+			self._logger.info(f'disconnecting from {self._uri}')
 			# Closes all its sockets too.
 			self._nbus.close()
 		else:
+			# A side connection, the device stays connected.
+			self._logger.debug(f'closing a side connection to {self._uri}')
 			self._socket.close()
 		self._nbus = None
 		self._socket = None

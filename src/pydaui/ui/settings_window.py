@@ -92,19 +92,33 @@ class UiSection(SettingsSection):
 
 	#: Show the main window maximized on startup.
 	MAIN_START_MAXIMIZED = 'ui.main_window.start_maximized'
-	#: Show the newly opened applet windows maximized.
+	#: Show the newly opened windows in the MDI area maximized.
 	APPLET_START_MAXIMIZED = 'ui.applets.start_maximized'
-	#: Show the minimize button in the title bars of the newly opened applet windows.
+	#: Show the minimize button in the title bars of the newly opened windows in the MDI area.
 	APPLET_ALLOW_MINIMIZING = 'ui.applets.allow_minimizing'
+
+	#: On Android the screen is too small for windows side by side, they are maximized and not minimized.
+	ANDROID = QSysInfo.productType() == 'android'
 
 	def __init__(self, settings):
 		super().__init__(settings)
 
 		self._group(self.tr('Main window'),
 			self._checkBox(self.tr('Start maximized'), self.MAIN_START_MAXIMIZED))
-		self._group(self.tr('Applet windows'),
-			self._checkBox(self.tr('Start new applets maximized'), self.APPLET_START_MAXIMIZED),
-			self._checkBox(self.tr('Allow minimizing'), self.APPLET_ALLOW_MINIMIZING, default=True))
+		self._group(self.tr('Applet and application windows'),
+			self._checkBox(self.tr('Open new windows maximized'), self.APPLET_START_MAXIMIZED,
+				default=self.ANDROID),
+			self._checkBox(self.tr('Allow minimizing'), self.APPLET_ALLOW_MINIMIZING, default=not self.ANDROID))
+
+	@classmethod
+	def startMaximized(cls, settings):
+		"""Whether the windows in the MDI area are opened maximized in the ``settings``."""
+		return bool(settings.get(cls.APPLET_START_MAXIMIZED, cls.ANDROID))
+
+	@classmethod
+	def allowMinimizing(cls, settings):
+		"""Whether the windows in the MDI area can be minimized in the ``settings``."""
+		return bool(settings.get(cls.APPLET_ALLOW_MINIMIZING, not cls.ANDROID))
 
 	@staticmethod
 	def sectionIcon():
@@ -422,6 +436,8 @@ class SectionPages(QWidget):
 
 class SettingsWindow(AppletWindow):
 	"""The settings, one page per :class:`SettingsSection` subclass, the Close button at the bottom right."""
+
+	LAYER = AppletWindow.TOOL
 
 	def __init__(self, settings, parent=None):
 		super().__init__(parent=parent)

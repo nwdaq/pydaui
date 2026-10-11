@@ -19,7 +19,8 @@ from pynbus2.uri import parse_uri, split_serial_path
 
 from pydaui import bluetooth, products
 from pydaui.connection import *
-from pydaui.ui.helpers import Admonition
+from pydaui.ui.helpers import Admonition, AppletWindow, DauiButton
+from pydaui.ui.icons import Icons
 
 
 def describeUri(uri):
@@ -441,48 +442,30 @@ class _TabScrollArea(QScrollArea):
 		return self.widget().sizeHint() + QSize(2 * self.frameWidth(), 2 * self.frameWidth())
 
 
-class ConnectWindow(QDialog):
+class ConnectWindow(AppletWindow):
+	"""Selects the target connection, on top of the applets in the MDI area while the device is not connected."""
+
+	LAYER = AppletWindow.CONNECT
 
 	def __init__(self, connection, parent=None):
 		super().__init__(parent=parent)
 		self._connection = connection
+		# Only the title, the window shows until connected and Exit quits the application.
+		self.setWindowFlags(Qt.SubWindow | Qt.CustomizeWindowHint | Qt.WindowTitleHint)
 
-		self._check_timer = QTimer()
+		self._check_timer = QTimer(self)
 		self._check_timer.setInterval(500)
 		self._check_timer.timeout.connect(self._checkTimerTimeout)
 		self._check_timer.start()
 
-		self.finished.connect(self._finished)
 		self._createUi()
 
 		self._connection.connectionChanged.connect(self._connectionChanged)
 		self._connection.connectFailed.connect(self._connectFailed)
 
-
-	def open(self):
-		super().open()
-		self.parent().updateOverlay()
-
-	def setVisible(self, visible):
-		if visible:
-			self._fitToScreen()
-		super().setVisible(visible)
-
-	def _fitToScreen(self):
-		"""Size the window to fit the screen when it is smaller (e.g. a tablet in portrait).
-
-		Its preferred size is used otherwise, not the one Qt gives a window by default, capped to 2/3 of
-		the screen. Done before the window is shown, QDialog then centres it over the main window within
-		the screen. Moving it once shown leaves it drawn elsewhere than it takes the touches on Android.
-		"""
-		parent = self.parentWidget() or self
-		# Not known before the window is shown, the frame of the main window is the same kind.
-		frame = parent.frameGeometry().size() - parent.size()
-		self.resize(self.sizeHint().boundedTo(parent.screen().availableGeometry().size() - frame))
-
 	def _createUi(self):
-		# self.resize(QSize(400, 300))
-		self.setWindowTitle('Connect')
+		self.setWindowTitle(self.tr('Connect'))
+		self.setWindowIcon(Icons.device())
 
 		# Why the last connection attempt failed, hidden until one fails.
 		self._error = Admonition('', Admonition.WARN)
@@ -498,34 +481,33 @@ class ConnectWindow(QDialog):
 			self._tabs.setTabIcon(i, tab_cls.tabIcon())
 			self._tabs.setTabEnabled(i, tab_cls.ENABLED)
 
+		self._exit_btn = DauiButton(self.tr('&Exit'), Icons.quit())
+		self._exit_btn.clicked.connect(self._exitClicked)
 
-		# Add bottom dialog buttons
-		self._hbox_btn = QHBoxLayout()
-		self._hbox_btn.addStretch(1)
+		self._connect_btn = DauiButton(self.tr('&Connect'), icon('mdi7.link', color='#080', scale_factor=1))
+		self._connect_btn.clicked.connect(self._connectClicked)
 
-		b_exit = QPushButton(
-			icon('mdi7.exit-to-app', color='#888', scale_factor=1),
-			'&Exit'
-		)
-		b_exit.setIconSize(QSize(24, 24))
-		b_exit.clicked.connect(self._exitClicked)
-		self._hbox_btn.addWidget(b_exit, alignment=Qt.AlignRight)
-		self._exit_btn = b_exit
+		self._tb = QToolBar()
+		spacer = QWidget()
+		spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+		self._tb.addWidget(spacer)
+		self._tb.addWidget(self._exit_btn)
+		self._tb.addWidget(self._connect_btn)
 
-		self._connect_icon = icon('mdi7.link', color='#080', scale_factor=1)
-		b_connect = QPushButton(self._connect_icon, '&Connect')
-		b_connect.setIconSize(QSize(24, 24))
-		b_connect.setDefault(True)
-		b_connect.clicked.connect(self._connectClicked)
-		self._hbox_btn.addWidget(b_connect, alignment=Qt.AlignRight)
-		self._connect_btn = b_connect
+		content = QVBoxLayout()
+		content.setContentsMargins(9, 9, 9, 9)
+		content.addWidget(self._error)
+		content.addWidget(self._tabs, stretch=1)
 
+		layout = QVBoxLayout()
+		layout.setContentsMargins(0, 0, 0, 0)
+		layout.setSpacing(0)
+		layout.addLayout(content, stretch=1)
+		layout.addWidget(self._tb)
 
-		self._vbox = QVBoxLayout()
-		self._vbox.addWidget(self._error)
-		self._vbox.addWidget(self._tabs)
-		self._vbox.addLayout(self._hbox_btn)
-		self.setLayout(self._vbox)
+		widget = QWidget()
+		widget.setLayout(layout)
+		self.setWidget(widget)
 
 	@Slot()
 	def _exitClicked(self):
@@ -542,58 +524,51 @@ class ConnectWindow(QDialog):
 		if not uri:
 			return
 		self._error.hide()
-		self._setConnecting(True)
-		# Connecting may take a while (e.g. a BLE device connects and its interfaces are walked).
-		self._connection.connectUriAsync(uri)
-
-	def _setConnecting(self, connecting):
-		"""Show the spinner in the Connect button and disable the rest while connecting."""
-		self._tabs.setEnabled(not connecting)
-		self._exit_btn.setEnabled(not connecting)
-		self._connect_btn.setEnabled(not connecting)
-		if connecting:
-			self._connect_btn.setText('Connecting...')
-			self._connect_btn.setIcon(icon('mdi7.loading', color='#080', animation=spin(self._connect_btn)))
-		else:
-			self._connect_btn.setText('&Connect')
-			self._connect_btn.setIcon(self._connect_icon)
+		# The connecting window shows instead, this one opens again when connecting fails or is cancelled.
+		# Not closed, that closes its content too, which stays hidden when the window shows again.
+		self.hide()
+		ConnectingWindow.start(self._connection, uri, self.mdiArea())
 
 	@Slot(object)
 	def _connectionChanged(self, uri):
 		if uri and self.isVisible():
-			self._setConnecting(False)
-			self.close()
+			self.hide()
 
 	@Slot(str, str)
 	def _connectFailed(self, uri, message):
-		self._setConnecting(False)
 		self.showError('Connecting to %s failed: %s' % (describeUri(uri), message))
 		# Right away when the connection made on startup failed, not on the next check.
 		if not self.isVisible():
-			self.open()
-
-	@Slot()
-	def _finished(self):
-		self.parent().updateOverlay()
+			self.showCentered()
 
 	@Slot()
 	def _checkTimerTimeout(self):
 		# Not while connecting, the connection is either made or this window shows why it failed.
 		if not self._connection.connected and not self._connection.connecting and not self.isVisible():
-			self.open()
+			self.showCentered()
 
 
-class ConnectingWindow(QDialog):
-	"""A spinner and the device being connected over the main window, with a Cancel button. Closes when
-	the connection is made, fails or is cancelled."""
+class ConnectingWindow(AppletWindow):
+	"""A spinner and the device being connected, on top of the applets in the MDI area, with a Cancel button. Closes
+	when the connection is made, fails or is cancelled."""
+
+	LAYER = AppletWindow.CONNECT
+	#: Small, kept in sight above the others.
+	MAXIMIZE = False
+	ON_TOP = True
 
 	def __init__(self, connection, uri, parent=None):
 		super().__init__(parent=parent)
-		self.setWindowTitle('Connecting')
+		self.setAttribute(Qt.WA_DeleteOnClose)
+		# Only the title, Cancel closes the window.
+		self.setWindowFlags(Qt.SubWindow | Qt.CustomizeWindowHint | Qt.WindowTitleHint)
+		self.setWindowTitle(self.tr('Connecting'))
+		self.setWindowIcon(Icons.device())
 		self._connection = connection
 		self._connection.connectionChanged.connect(self._done)
 		self._connection.connectFailed.connect(self._done)
-		self.finished.connect(self._finished)
+		# Whether the connection was made or failed, closing the window cancels it otherwise.
+		self._finished = False
 
 		spinner = QToolButton()
 		spinner.setAutoRaise(True)
@@ -602,35 +577,51 @@ class ConnectingWindow(QDialog):
 		spinner.setIconSize(QSize(32, 32))
 		spinner.setIcon(icon('mdi7.loading', color='#44c', animation=spin(spinner)))
 
-		label = QLabel('Connecting to<br/><b>%s</b>...' % html.escape(describeUri(uri)))
+		label = QLabel(self.tr('Connecting to<br/><b>%s</b>...') % html.escape(describeUri(uri)))
 
 		row = QHBoxLayout()
+		row.setContentsMargins(9, 9, 9, 9)
 		row.addWidget(spinner)
 		row.addWidget(label, 1)
 
-		cancel = QPushButton(icon('mdi7.close', color='#888', scale_factor=1), '&Cancel')
-		cancel.setIconSize(QSize(24, 24))
-		cancel.clicked.connect(self.reject)
+		cancel = DauiButton(self.tr('&Cancel'), Icons.cancel())
+		cancel.clicked.connect(self.close)
+
+		self._tb = QToolBar()
+		spacer = QWidget()
+		spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+		self._tb.addWidget(spacer)
+		self._tb.addWidget(cancel)
 
 		layout = QVBoxLayout()
-		layout.addLayout(row)
-		layout.addWidget(cancel, alignment=Qt.AlignRight)
-		self.setLayout(layout)
-		self.setMinimumWidth(360)
+		layout.setContentsMargins(0, 0, 0, 0)
+		layout.setSpacing(0)
+		layout.addLayout(row, stretch=1)
+		layout.addWidget(self._tb)
 
-	def open(self):
-		super().open()
-		self.parent().updateOverlay()
+		widget = QWidget()
+		widget.setLayout(layout)
+		widget.setMinimumWidth(360)
+		self.setWidget(widget)
+
+	@classmethod
+	def start(cls, connection, uri, area):
+		"""Connect ``connection`` to ``uri`` in the background, showing the window in the MDI ``area``
+		meanwhile. Connecting may take a while (e.g. a BLE device connects and its interfaces are walked)."""
+		window = cls(connection, uri)
+		area.addSubWindow(window)
+		window.showCentered()
+		connection.connectUriAsync(uri)
+		return window
 
 	@Slot()
 	def _done(self):
-		self.accept()
+		self._finished = True
+		self.close()
 
-	@Slot(int)
-	def _finished(self, result):
+	def closeEvent(self, event):
 		self._connection.connectionChanged.disconnect(self._done)
 		self._connection.connectFailed.disconnect(self._done)
-		if result == QDialog.Rejected:
+		if not self._finished:
 			self._connection.cancelConnect()
-		self.parent().updateOverlay()
-		self.deleteLater()
+		super().closeEvent(event)

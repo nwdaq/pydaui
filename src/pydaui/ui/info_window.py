@@ -17,6 +17,8 @@ class InfoWindow(AppletWindow):
 	"""Scrolling content added with :meth:`addText` and :meth:`addWidget`, the Close button at the bottom
 	right. Used for the windows of the Help menu."""
 
+	LAYER = AppletWindow.TOOL
+
 	def __init__(self, title, icon, parent=None):
 		super().__init__(parent=parent)
 		self.setAttribute(Qt.WA_DeleteOnClose)

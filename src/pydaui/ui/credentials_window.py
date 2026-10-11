@@ -23,6 +23,10 @@ class CredentialsWindow(AppletWindow):
 	window emits :attr:`rejected`. The window closes either way.
 	"""
 
+	#: Small, kept in sight above the others.
+	MAXIMIZE = False
+	ON_TOP = True
+
 	accepted = Signal(str, str, bool)
 	rejected = Signal()
 

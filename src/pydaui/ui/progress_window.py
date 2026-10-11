@@ -67,6 +67,10 @@ class ProgressWindow(AppletWindow):
 	returns the speed text, e.g. a :class:`ByteFormat`; by default a :class:`PlainFormat`.
 	"""
 
+	#: Small, kept in sight above the others.
+	MAXIMIZE = False
+	ON_TOP = True
+
 	aborted = Signal()
 
 	#: How long the action has to run before the time left is estimated, in seconds.

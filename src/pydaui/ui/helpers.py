@@ -153,8 +153,58 @@ class DauiButton(QPushButton):
 
 class AppletWindow(QMdiSubWindow):
 
+	#: The layers the windows are stacked in within the MDI area, from the bottom. The applets of the connected
+	#: device and the windows they open.
+	APPLET = 0
+	#: The windows connecting the device, e.g. the connect window. On top of the applets, which are dimmed while
+	#: one is shown.
+	CONNECT = 1
+	#: The windows of the application menus, e.g. the settings. Above the connect windows, usable while they
+	#: are shown.
+	TOOL = 2
+
+	#: The layer of the window, one of the above.
+	LAYER = APPLET
+
+	#: Whether the window is shown maximized when its MDI area maximizes the windows. The small windows asking
+	#: or telling something, e.g. a progress, are not.
+	MAXIMIZE = True
+
+	#: Whether the window stays on top of all the others, whatever their layers, e.g. a progress.
+	ON_TOP = False
+
 	def __init__(self, parent=None):
 		super().__init__(parent=parent)
+
+	def setVisible(self, visible):
+		area = self.mdiArea()
+		if visible:
+			super().setVisible(True)
+			# The MDI area of the main window may show all its windows maximized.
+			if (self.MAXIMIZE and area is not None and getattr(area, 'maximizesWindows', lambda: False)()
+			        and not self.isMaximized()):
+				self.showMaximized()
+			return
+		if area is None or area.activeSubWindow() is not self:
+			super().setVisible(False)
+			return
+		# QMdiArea keeps a hidden window active, deactivating it later shows it again. Deactivated first,
+		# the previous window is activated instead once it is hidden.
+		area.setActiveSubWindow(None)
+		super().setVisible(False)
+		area.activatePreviousSubWindow()
+
+	def showCentered(self):
+		"""Show the window in the middle of its MDI area and activate it, as large as it prefers but no larger
+		than the area (e.g. a tablet in portrait)."""
+		area = self.mdiArea()
+		if area is not None:
+			viewport = area.viewport().size()
+			self.resize(self.sizeHint().boundedTo(viewport))
+			self.move(max(0, (viewport.width() - self.width()) // 2), max(0, (viewport.height() - self.height()) // 2))
+		self.show()
+		if area is not None:
+			area.setActiveSubWindow(self)
 
 	def moveEvent(self, event):
 		super().moveEvent(event)
