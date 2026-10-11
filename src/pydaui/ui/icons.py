@@ -20,6 +20,8 @@ class Icons:
 	RED = '#e37979'
 	LIGHT_RED = '#f9d4d4'
 	ORANGE = '#e3a079'
+	DARK_GREEN = '#1f6b2e'
+	LIGHT_GREEN = '#bfe6c4'
 	DARK_GRAY = '#4a4a4a'
 	GRAY = '#999'
 	LIGHT_GRAY = '#d6d6d6'
@@ -44,6 +46,43 @@ class Icons:
 		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
 			<path transform="rotate(45 12 12)" fill="{Icons.LIGHT_RED}" stroke="{Icons.DARK_RED}" stroke-width="1.2" stroke-linejoin="round"
 				d="M10.3 4.5 H13.7 V10.3 H19.5 V13.7 H13.7 V19.5 H10.3 V13.7 H4.5 V10.3 H10.3 Z"/>
+		</svg>""")
+
+	@staticmethod
+	def add():
+		"""An add icon: a green plus sign."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<path fill="{Icons.LIGHT_GREEN}" stroke="{Icons.DARK_GREEN}" stroke-width="1.1" stroke-linejoin="round"
+				d="M10.3 5 H13.7 V10.3 H19 V13.7 H13.7 V19 H10.3 V13.7 H5 V10.3 H10.3 Z"/>
+		</svg>""")
+
+	@staticmethod
+	def remove():
+		"""A remove icon: a red minus sign, the bar of the add icon."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<path fill="{Icons.LIGHT_RED}" stroke="{Icons.DARK_RED}" stroke-width="1.1" stroke-linejoin="round"
+				d="M5 10.3 H19 V13.7 H5 Z"/>
+		</svg>""")
+
+	@staticmethod
+	def edit():
+		"""An edit icon: a pencil pointing down to the left, its tip writing a line."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<path d="M3 21.5 H12" stroke="{Icons.GRAY}" stroke-width="1.1" stroke-linecap="round"/>
+			<g transform="rotate(45 12 12)" stroke="{Icons.PRIMARY}" stroke-width="1.1" stroke-linejoin="round">
+				<rect x="9.5" y="1" width="5" height="3.5" rx="0.8" fill="{Icons.RED}"/>
+				<rect x="9.5" y="4.5" width="5" height="12" fill="{Icons.PRIMARY_LIGHT}"/>
+				<path d="M9.5 16.5 H14.5 L12 21.5 Z" fill="{Icons.WHITE}"/>
+				<path d="M11.2 19.9 L12 21.5 L12.8 19.9 Z" fill="{Icons.PRIMARY}"/>
+			</g>
+		</svg>""")
+
+	@staticmethod
+	def confirm():
+		"""A confirm icon: a thick check mark."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<path fill="{Icons.PRIMARY_LIGHT}" stroke="{Icons.PRIMARY}" stroke-width="1.1" stroke-linejoin="round"
+				d="M2.5 12.5 L5 10 L9.5 14.5 L19 5 L21.5 7.5 L9.5 19.5 Z"/>
 		</svg>""")
 
 	@staticmethod
