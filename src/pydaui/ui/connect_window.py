@@ -19,7 +19,7 @@ from pynbus2.uri import parse_uri, split_serial_path
 
 from pydaui import bluetooth, products
 from pydaui.connection import *
-from pydaui.ui.helpers import Admonition, AppletWindow, DauiButton
+from pydaui.ui.helpers import Admonition, AppletWindow, DauiButton, WrappedLabel
 from pydaui.ui.icons import Icons
 
 
@@ -28,6 +28,15 @@ def describeUri(uri):
 	parsed = parse_uri(uri)
 	name = parsed.get('name')
 	return '%s (%s)' % (name, parsed.scheme) if name else uri
+
+
+class _ShrinkingComboBox(QComboBox):
+	"""A combo box narrower than its longest item if it has to, the items are elided then."""
+
+	def __init__(self):
+		super().__init__()
+		self.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+		self.setMinimumContentsLength(8)
 
 
 class ConnectWindowTab(QWidget):
@@ -80,29 +89,29 @@ class SwdTab(ConnectWindowTab):
 	def _createUi(self):
 		l = QVBoxLayout()
 		self.setLayout(l)
-		l.addWidget(QLabel(
-			'SWD is a debug interface and protocol used to access ARM Cortex-M\n'
+		l.addWidget(WrappedLabel(
+			'SWD is a debug interface and protocol used to access ARM Cortex-M '
 			'microprocessor cores and perform debug actions or program memories.\n\n'
 			'It is possible to use SWD access to recover a broken device bootloader.\n\n'
 			'Select debug probe to access the device:'
 		))
 
 		# Create a combo box to select debug probe to access the target
-		cb = QComboBox()
+		cb = _ShrinkingComboBox()
 		cb.setIconSize(QSize(24, 24))
 		l.addWidget(cb)
 		self._probe_cb = cb
-		self._probe_status = QLabel()
+		self._probe_status = WrappedLabel()
 		l.addWidget(self._probe_status)
 
 		l.addSpacing(16)
 
-		l.addWidget(QLabel(
+		l.addWidget(WrappedLabel(
 			'Select the device/product you are connecting to. It must be known beforehand:'
 		))
 
 		# Add list of devices/products
-		dev = QComboBox()
+		dev = _ShrinkingComboBox()
 		dev.setIconSize(QSize(24, 24))
 		# SWD does not identify the product, it must be known.
 		for p in products.load():
@@ -116,6 +125,8 @@ class SwdTab(ConnectWindowTab):
 			'Beware, here be dragons. Selecting the wrong device may damage it.',
 			Admonition.WARN
 		))
+		# The spare room when the window is higher than the tab, e.g. maximized.
+		l.addStretch(1)
 
 	def _refresh(self):
 		# Probing loads pyocd, which takes a while.
@@ -214,8 +225,8 @@ class SerialTab(ConnectWindowTab):
 	def _createUi(self):
 		l = QVBoxLayout()
 		self.setLayout(l)
-		l.addWidget(QLabel(
-			'Connect over a serial diagnostic console. Pick a port and press Refresh\n'
+		l.addWidget(WrappedLabel(
+			'Connect over a serial diagnostic console. Pick a port and press Refresh '
 			'to discover the services advertised on the bus, then select one to connect.'
 		))
 
@@ -351,12 +362,12 @@ class BleTab(ConnectWindowTab):
 		l = QVBoxLayout()
 		self.setLayout(l)
 		if bluetooth.scans():
-			howto = ('Nearby devices are listed, the device is paired when connecting\n'
+			howto = ('Nearby devices are listed, the device is paired when connecting '
 			         'to it the first time.')
 		else:
-			howto = ('Only bonded devices are listed, pair and trust the device first\n'
+			howto = ('Only bonded devices are listed, pair and trust the device first '
 			         '(e.g. with bluetoothctl).')
-		l.addWidget(QLabel('Connect to a device over Bluetooth Low Energy. %s\n\n'
+		l.addWidget(WrappedLabel('Connect to a device over Bluetooth Low Energy. %s\n\n'
 		                   'Select the device to connect to:' % howto))
 
 		# A list, not a combo box: its popup cannot be touched on Android, the touches miss its items.
@@ -375,7 +386,7 @@ class BleTab(ConnectWindowTab):
 		self._refresh_btn = btn
 		l.addLayout(row, 1)
 
-		self._status = QLabel()
+		self._status = WrappedLabel()
 		l.addWidget(self._status)
 
 	@staticmethod
@@ -430,7 +441,8 @@ class BleTab(ConnectWindowTab):
 
 
 class _TabScrollArea(QScrollArea):
-	"""Scrolls a connect window tab when the window is shrunk to a small screen.
+	"""Scrolls a connect window tab when the window is lower than the tab, e.g. on a small screen. Never
+	horizontally, the tab wraps its texts to the width of the window.
 
 	A plain QScrollArea caps its size hint, this one asks for the whole tab so the window keeps its natural
 	size wherever it fits.
@@ -441,6 +453,7 @@ class _TabScrollArea(QScrollArea):
 		self.setWidget(tab)
 		self.setWidgetResizable(True)
 		self.setFrameShape(QFrame.NoFrame)
+		self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
 	def sizeHint(self):
 		return self.widget().sizeHint() + QSize(2 * self.frameWidth(), 2 * self.frameWidth())

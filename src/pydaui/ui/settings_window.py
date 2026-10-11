@@ -9,15 +9,40 @@ from PySide6.QtCore import *
 from PySide6.QtWidgets import *
 from PySide6.QtGui import *
 
-from pydaui.ui.helpers import ANDROID, AppletWindow, DauiButton, StyledTreeWidget
+from pydaui.ui.helpers import ANDROID, AppletWindow, DauiButton, StyledTreeWidget, WrappedCheckBox, WrappedLabel
 from pydaui.ui.icons import Icons
+
+
+class SettingsGroup(QWidget):
+	"""A group box with the ``widgets`` below each other, the ``title`` above it wraps unlike the title of
+	a :class:`QGroupBox`."""
+
+	def __init__(self, title, *widgets):
+		super().__init__()
+		self._title = WrappedLabel()
+		layout = QVBoxLayout()
+		for widget in widgets:
+			layout.addWidget(widget)
+		box = QGroupBox()
+		box.setLayout(layout)
+		outer = QVBoxLayout(self)
+		outer.setContentsMargins(0, 0, 0, 0)
+		outer.setSpacing(2)
+		outer.addWidget(self._title)
+		outer.addWidget(box)
+		self.setTitle(title)
+
+	def setTitle(self, title):
+		self._title.setText(title)
+		self._title.setVisible(bool(title))
 
 
 class SettingsSection(QWidget):
 	"""Base class for a section of the settings window.
 
 	Each subclass is one section, listed on the left with its :attr:`NAME` and :meth:`sectionIcon`, in the
-	order the subclasses are defined.
+	order the subclasses are defined. Its texts wrap, the check boxes and labels are :class:`WrappedCheckBox`
+	and :class:`WrappedLabel`, so that it is never wider than the window, e.g. maximized on a small screen.
 	"""
 
 	NAME = ''
@@ -26,8 +51,12 @@ class SettingsSection(QWidget):
 		super().__init__()
 		self._settings = settings
 
-		#: The rows of the section, its subclasses add them with ``addRow()``.
+		#: The rows of the section, its subclasses add them with ``addRow()``. A field too wide to be next
+		#: to its label goes below it.
 		self._form = QFormLayout()
+		self._form.setRowWrapPolicy(QFormLayout.WrapLongRows)
+		# The rows span the whole width on any platform, some keep them at their size hint by default.
+		self._form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
 
 		layout = QVBoxLayout()
 		layout.addLayout(self._form)
@@ -40,7 +69,7 @@ class SettingsSection(QWidget):
 
 	def _checkBox(self, text, key, default=False):
 		"""A check box showing the boolean setting ``key``, changing it when toggled."""
-		box = QCheckBox(text)
+		box = WrappedCheckBox(text)
 		box.setChecked(bool(self._settings.get(key, default)))
 		box.toggled.connect(lambda checked: self._set(key, checked))
 		return box
@@ -60,12 +89,8 @@ class SettingsSection(QWidget):
 		self._settings.save()
 
 	def _group(self, title, *widgets):
-		"""A group box titled ``title`` with ``widgets`` below each other, added below the rows."""
-		layout = QVBoxLayout()
-		for widget in widgets:
-			layout.addWidget(widget)
-		group = QGroupBox(title)
-		group.setLayout(layout)
+		"""A :class:`SettingsGroup` titled ``title`` with ``widgets`` below each other, added below the rows."""
+		group = SettingsGroup(title, *widgets)
 		self._form.addRow(group)
 		return group
 
@@ -77,9 +102,7 @@ class GeneralSection(SettingsSection):
 	def __init__(self, settings):
 		super().__init__(settings)
 
-		path = QLabel(str(settings.path))
-		path.setTextInteractionFlags(Qt.TextSelectableByMouse)
-		self._form.addRow(self.tr('Settings file:'), path)
+		self._form.addRow(WrappedLabel(self.tr('Settings file:')), WrappedLabel(str(settings.path)))
 
 	@staticmethod
 	def sectionIcon():
@@ -197,9 +220,8 @@ class RepositoriesSection(SettingsSection):
 
 		latest = QHBoxLayout()
 		latest.setContentsMargins(0, 0, 0, 0)
-		latest.addWidget(QLabel(self.tr('Number of the latest firmware files to download:')))
-		latest.addWidget(self._spinBox(self.LATEST, self.LATEST_DEFAULT, 1, 100))
-		latest.addStretch(1)
+		latest.addWidget(WrappedLabel(self.tr('Number of the latest firmware files to download:')), stretch=1)
+		latest.addWidget(self._spinBox(self.LATEST, self.LATEST_DEFAULT, 1, 100), alignment=Qt.AlignTop)
 		latest_row = QWidget()
 		latest_row.setLayout(latest)
 		self._group(self.tr('Repository updates'), latest_row)
@@ -218,8 +240,10 @@ class RepositoriesSection(SettingsSection):
 		self._url.textChanged.connect(self._updateConfirm)
 		fields = QFormLayout()
 		fields.setContentsMargins(0, 0, 0, 0)
-		fields.addRow(self.tr('Name:'), self._name)
-		fields.addRow(self.tr('URL:'), self._url)
+		fields.setRowWrapPolicy(QFormLayout.WrapLongRows)
+		fields.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+		fields.addRow(WrappedLabel(self.tr('Name:')), self._name)
+		fields.addRow(WrappedLabel(self.tr('URL:')), self._url)
 		field_rows = QWidget()
 		field_rows.setLayout(fields)
 
@@ -429,7 +453,14 @@ class SectionPages(QWidget):
 	def addPage(self, widget, name, page_icon=QIcon()):
 		"""Add the page ``widget`` listed as ``name``, the first one added is selected."""
 		self._list.addItem(QListWidgetItem(page_icon, name))
-		self._pages.addWidget(widget)
+		# Scrolled when the window is lower than the page, e.g. maximized on a small screen. Never
+		# horizontally, the page wraps to the width of the window.
+		scroll = QScrollArea()
+		scroll.setWidget(widget)
+		scroll.setWidgetResizable(True)
+		scroll.setFrameShape(QFrame.NoFrame)
+		scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+		self._pages.addWidget(scroll)
 		if self._list.currentRow() < 0:
 			self._list.setCurrentRow(0)
 

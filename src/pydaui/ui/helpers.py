@@ -5,6 +5,8 @@
 # Copyright (c) 2026, Marek Koza (qyx@krtko.org)
 # All rights reserved.
 
+import math
+
 from PySide6.QtCore import *
 from PySide6.QtWidgets import *
 from PySide6.QtGui import *
@@ -140,10 +142,120 @@ class SvgIcon(QIcon):
 
 
 
+class WrappedLabel(QWidget):
+	"""Plain text wrapped to the width it gets, at the words, and anywhere in a word longer than a line
+	(e.g. a path). Unlike a word wrapped :class:`QLabel` it never needs to be wider than a few characters,
+	so it never makes a window wider than the screen."""
+
+	#: The narrowest width, in average character widths.
+	MIN_CHARS = 8
+	#: The preferred width of a longer text, in average character widths.
+	PREFERRED_CHARS = 60
+
+	def __init__(self, text='', parent=None):
+		super().__init__(parent)
+		self._text = text
+		# Not Fixed vertically, a layout caps the height for the width at the size hint then.
+		size_policy = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+		size_policy.setHeightForWidth(True)
+		self.setSizePolicy(size_policy)
+
+	def text(self):
+		return self._text
+
+	def setText(self, text):
+		self._text = text
+		self.updateGeometry()
+		self.update()
+
+	def _layout(self, width):
+		"""The text laid out in lines of ``width`` and its height."""
+		# QTextLayout breaks the lines at line separators only.
+		layout = QTextLayout(self._text.replace('\n', '\u2028'), self.font())
+		option = QTextOption()
+		option.setWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
+		layout.setTextOption(option)
+		layout.beginLayout()
+		height = 0.0
+		while True:
+			line = layout.createLine()
+			if not line.isValid():
+				break
+			line.setLineWidth(width)
+			line.setPosition(QPointF(0, height))
+			height += line.height()
+		layout.endLayout()
+		return layout, math.ceil(height)
+
+	def hasHeightForWidth(self):
+		return True
+
+	def heightForWidth(self, width):
+		return self._layout(max(width, 1))[1]
+
+	def _lineWidth(self):
+		"""The width of the longest line of the text not wrapped."""
+		metrics = self.fontMetrics()
+		return max((metrics.horizontalAdvance(line) for line in self._text.split('\n')), default=0) + 1
+
+	def sizeHint(self):
+		# Each line on a single line unless it is long, like a word wrapped QLabel.
+		width = min(self._lineWidth(), self.fontMetrics().averageCharWidth() * self.PREFERRED_CHARS)
+		return QSize(width, self.heightForWidth(width))
+
+	def minimumSizeHint(self):
+		metrics = self.fontMetrics()
+		width = min(metrics.averageCharWidth() * self.MIN_CHARS, self._lineWidth())
+		# A single line, the layouts take the height for the width they give from heightForWidth().
+		return QSize(width, metrics.height())
+
+	def paintEvent(self, event):
+		layout, _height = self._layout(self.width())
+		painter = QPainter(self)
+		painter.setPen(self.palette().color(QPalette.WindowText))
+		layout.draw(painter, QPointF(0, 0))
+
+
+class WrappedCheckBox(QWidget):
+	"""A check box with its text in a :class:`WrappedLabel`, it never needs to be wider than a few
+	characters. Clicking the text toggles it too."""
+
+	toggled = Signal(bool)
+
+	def __init__(self, text='', parent=None):
+		super().__init__(parent)
+		self._box = QCheckBox()
+		self._box.toggled.connect(self.toggled)
+		self._label = WrappedLabel(text)
+		layout = QHBoxLayout(self)
+		layout.setContentsMargins(0, 0, 0, 0)
+		layout.addWidget(self._box, alignment=Qt.AlignTop)
+		layout.addWidget(self._label, stretch=1)
+
+	def isChecked(self):
+		return self._box.isChecked()
+
+	def setChecked(self, checked):
+		self._box.setChecked(checked)
+
+	def mousePressEvent(self, event):
+		# Accepted, the release comes here then.
+		event.accept()
+
+	def mouseReleaseEvent(self, event):
+		if event.button() == Qt.LeftButton and self._label.geometry().contains(event.position().toPoint()):
+			self._box.toggle()
+
+
 class DauiButton(QPushButton):
+	"""A push button with an icon and a text. Squeezed narrower than it prefers (e.g. on a small screen), it
+	shows the icon only, the text becomes its tool tip."""
 
 	def __init__(self, text=None, btn_icon=None, color='#000'):
 		super().__init__()
+		# The text shown when there is room for it, and the tool tip set.
+		self._text = ''
+		self._tool_tip = ''
 
 		if type(btn_icon) == str:
 			btn_icon = icon(f'mdi7.{btn_icon}', color=color, scale_factor=1)
@@ -153,6 +265,52 @@ class DauiButton(QPushButton):
 			self.setText(text)
 
 		self.setIconSize(QSize(24, 24))
+		# Shrinks below its size hint down to the icon, a push button does not otherwise.
+		self.setSizePolicy(QSizePolicy.Preferred, self.sizePolicy().verticalPolicy())
+
+	def text(self):
+		return self._text
+
+	def setText(self, text):
+		self._text = text
+		self.updateGeometry()
+		self._showText()
+
+	def _hint(self, text):
+		"""The size of the button showing ``text``, computed like QPushButton does."""
+		width = height = 0
+		if not self.icon().isNull():
+			width, height = self.iconSize().width() + (4 if text else 0), self.iconSize().height()
+		if text:
+			size = self.fontMetrics().size(Qt.TextShowMnemonic, text)
+			width += size.width()
+			height = max(height, size.height())
+		option = QStyleOptionButton()
+		self.initStyleOption(option)
+		# The style makes a button with a text wider, e.g. at least 80 px in Fusion.
+		option.text = text
+		return self.style().sizeFromContents(QStyle.CT_PushButton, option, QSize(width, height), self)
+
+	def sizeHint(self):
+		return self._hint(self._text)
+
+	def minimumSizeHint(self):
+		return self._hint('' if not self.icon().isNull() else self._text)
+
+	def setToolTip(self, text):
+		self._tool_tip = text
+		self._showText()
+
+	def _showText(self):
+		shown = self.icon().isNull() or self.width() >= self._hint(self._text).width()
+		super().setText(self._text if shown else '')
+		# Without the mnemonic marks
+		text = self._text.replace('&&', '\0').replace('&', '').replace('\0', '&')
+		super().setToolTip(self._tool_tip or ('' if shown else text))
+
+	def resizeEvent(self, event):
+		super().resizeEvent(event)
+		self._showText()
 
 
 class AppletWindow(QMdiSubWindow):
