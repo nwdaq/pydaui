@@ -15,8 +15,10 @@ set -euo pipefail
 PYSIDE_VERSION=6.8.2.1
 QT_VERSION=6.8.2
 ARCH=${ARCH:-aarch64}
-# p4a develop has moved past Python 3.11 required by the cp311 PySide6 wheels
-P4A_BRANCH=v2024.01.21
+# The last p4a commit building Python 3.11 needed by the cp311 PySide6 wheels, later ones build
+# 3.14. Releases up to v2024.01.21 have a Qt bootstrap not working with Qt 6.7 and later.
+P4A_BRANCH=develop
+P4A_COMMIT=c02cf781a0d3d232eb4ffbeaf580cc82cf2bd65f
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 STAGE=$ROOT/build/android
@@ -72,9 +74,9 @@ pyside6-android-deploy --init --keep-deployment-files --force --verbose --name p
 	--wheel-pyside "$WHEELS/PySide6-$PYSIDE_VERSION-$QT_VERSION-cp311-cp311-android_$ARCH.whl" \
 	--wheel-shiboken "$WHEELS/shiboken6-$PYSIDE_VERSION-$QT_VERSION-cp311-cp311-android_$ARCH.whl"
 
-python - buildozer.spec "$P4A_BRANCH" "${REQUIREMENTS[@]}" <<'EOF'
+python - buildozer.spec "$P4A_BRANCH" "$P4A_COMMIT" "${REQUIREMENTS[@]}" <<'EOF'
 import configparser, sys
-path, branch, *requirements = sys.argv[1:]
+path, branch, commit, *requirements = sys.argv[1:]
 spec = configparser.ConfigParser(interpolation=None, comment_prefixes='#')
 spec.optionxform = str
 spec.read(path)
@@ -90,6 +92,7 @@ app['android.minapi'] = '28'
 app['android.api'] = '34'
 app['android.accept_sdk_license'] = 'True'
 app['p4a.branch'] = branch
+app['p4a.commit'] = commit
 spec['buildozer']['log_level'] = '2'
 with open(path, 'w') as f:
 	spec.write(f)
