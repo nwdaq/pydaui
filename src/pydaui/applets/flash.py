@@ -14,6 +14,7 @@ partitions are loaded off the GUI thread.
 """
 
 import contextlib
+import io
 import logging
 import os
 import shutil
@@ -26,6 +27,7 @@ from PySide6.QtWidgets import *
 from PySide6.QtGui import *
 from pynbus2.services import flash as flash_service
 
+from pydaui.files import display_name, read_file, write_file
 from pydaui.ui.helpers import Admonition, AppletWindow, DauiButton, StyledTreeWidget
 from pydaui.ui.icons import Icons
 from pydaui.ui.progress_window import ByteFormat, ProgressWindow
@@ -750,26 +752,26 @@ class FlashPartitions(QWidget):
 		"""Read the partition ``name`` of ``size`` bytes to the file at ``path``, showing the progress in a
 		window. ``finished`` is called with whether it succeeded once it ends, unless the read is dropped
 		by :meth:`abort`."""
-		# Read into a temporary file next to the target, which replaces the target only once the whole
-		# partition is read. An aborted or failed read leaves no partial file behind.
-		try:
-			fd, tmp_path = tempfile.mkstemp(prefix=f'.{os.path.basename(path)}.', dir=os.path.dirname(path) or '.')
-		except OSError as e:
-			QMessageBox.warning(self, self.tr('Read partition'), self.tr('Cannot write %s: %s') % (path, e))
-			if finished is not None:
-				finished(False)
-			return
+		# Read into memory, the file is written only once the whole partition is read. An aborted or failed
+		# read leaves the file as it was.
+		buffer = io.BytesIO()
 
 		def run(progress, abort, stage):
-			try:
-				with os.fdopen(fd, 'wb') as file:
-					self._client.read(name, size, file, progress, abort)
-				os.replace(tmp_path, path)
-			except BaseException:
-				os.remove(tmp_path)
-				raise
+			self._client.read(name, size, buffer, progress, abort)
 
-		self._runOperation(run, name, size, self.tr('Read'), self.tr('Reading'), finished=finished)
+		def done(ok):
+			if ok:
+				try:
+					write_file(path, buffer.getvalue())
+				except OSError as e:
+					self._logger.warning(f'cannot write {path}: {e}')
+					QMessageBox.warning(self, self.tr('Read partition'),
+					                    self.tr('Cannot write %s: %s') % (display_name(path), e))
+					ok = False
+			if finished is not None:
+				finished(ok)
+
+		self._runOperation(run, name, size, self.tr('Read'), self.tr('Reading'), finished=done)
 
 	@Slot(QTreeWidgetItem)
 	def _startDrag(self, item):
@@ -831,12 +833,11 @@ class FlashPartitions(QWidget):
 				self, self.tr('Write partition %s') % name, '', self.tr('Binary files (*.bin);;All files (*)'))
 			if not path:
 				return
-		file_name = os.path.basename(path)
+		file_name = display_name(path)
 		try:
-			with open(path, 'rb') as file:
-				data = file.read()
+			data = read_file(path)
 		except OSError as e:
-			QMessageBox.warning(self, self.tr('Write partition'), self.tr('Cannot read %s: %s') % (path, e))
+			QMessageBox.warning(self, self.tr('Write partition'), self.tr('Cannot read %s: %s') % (file_name, e))
 			return
 		size = detail['size']
 		if not data:
