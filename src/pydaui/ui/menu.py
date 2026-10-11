@@ -15,6 +15,7 @@ from superqt.fonticon import icon, spin, pulse
 
 from pydaui.applets import conf
 from pydaui.connection import *
+from pydaui.ui.helpers import ANDROID
 from pydaui.ui.icons import Icons
 
 
@@ -158,6 +159,11 @@ class DeviceStatus(QWidget):
 
 
 class MainMenu(QToolBar):
+	"""The application menus and the connection status. On Android the menus open from a hamburger button, a
+	menu bar there is merged into the options menu of the activity, which pydaui has no action bar to show."""
+
+	#: The icon size of the toolbar on Android, it is higher there to be touched easily.
+	ANDROID_ICON_SIZE = 32
 
 	#: The Disconnect button was clicked, the device is to be disconnected.
 	disconnectRequested = Signal()
@@ -176,18 +182,37 @@ class MainMenu(QToolBar):
 		self.setMovable(False)
 		self.setFloatable(False)
 
-		self._menu = QMenuBar()
 		self._app_menu = ApplicationMenu()
 		self._app_menu.settingsRequested.connect(self.settingsRequested)
 		self._app_menu.quitRequested.connect(self.quitRequested)
-		self._menu.addMenu(self._app_menu)
-		self._menu.addMenu(DeviceMenu())
+		self._device_menu = DeviceMenu()
 		self._help_menu = HelpMenu()
 		self._help_menu.changelogRequested.connect(self.changelogRequested)
 		self._help_menu.aboutRequested.connect(self.aboutRequested)
-		self._menu.addMenu(self._help_menu)
+		menus = (self._app_menu, self._device_menu, self._help_menu)
 
-		self.addWidget(self._menu)
+		if ANDROID:
+			self.setIconSize(QSize(self.ANDROID_ICON_SIZE, self.ANDROID_ICON_SIZE))
+			self._menu = QMenu(self)
+			for menu in menus:
+				self._menu.addMenu(menu)
+			button = QToolButton()
+			button.setIcon(icon('mdi7.menu', color='#444', scale_factor=1))
+			button.setToolTip(self.tr('Menu'))
+			button.setMenu(self._menu)
+			button.setPopupMode(QToolButton.InstantPopup)
+			# Without the arrow of a button with a menu
+			button.setStyleSheet('QToolButton::menu-indicator { image: none; }')
+			self.addWidget(button)
+			# Takes the room the menu bar takes elsewhere, the connection bar is on the right.
+			spacer = QWidget()
+			spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+			self.addWidget(spacer)
+		else:
+			self._menu = QMenuBar()
+			for menu in menus:
+				self._menu.addMenu(menu)
+			self.addWidget(self._menu)
 		self.addSeparator()
 		self._addConnectionBar()
 

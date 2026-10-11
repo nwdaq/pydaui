@@ -9,7 +9,7 @@ from PySide6.QtCore import *
 from PySide6.QtWidgets import *
 from PySide6.QtGui import *
 
-from pydaui.ui.helpers import AppletWindow, DauiButton, StyledTreeWidget
+from pydaui.ui.helpers import ANDROID, AppletWindow, DauiButton, StyledTreeWidget
 from pydaui.ui.icons import Icons
 
 
@@ -98,7 +98,7 @@ class UiSection(SettingsSection):
 	APPLET_ALLOW_MINIMIZING = 'ui.applets.allow_minimizing'
 
 	#: On Android the screen is too small for windows side by side, they are maximized and not minimized.
-	ANDROID = QSysInfo.productType() == 'android'
+	ANDROID = ANDROID
 
 	def __init__(self, settings):
 		super().__init__(settings)

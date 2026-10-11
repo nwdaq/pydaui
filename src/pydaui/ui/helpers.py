@@ -12,6 +12,10 @@ from PySide6.QtSvg import QSvgRenderer
 from superqt.fonticon import icon, spin, pulse
 
 
+#: Whether running on Android, where the screen is small and touched.
+ANDROID = QSysInfo.productType() == 'android'
+
+
 class Admonition(QFrame):
 
 	MESSAGE = 1
