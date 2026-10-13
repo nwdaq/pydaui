@@ -6,6 +6,7 @@
 # All rights reserved.
 
 import html
+import shutil
 import threading
 from pathlib import Path
 from urllib.parse import urlencode
@@ -60,9 +61,10 @@ class ConnectWindowTab(QWidget):
 	#: Whether the tab is selectable.
 	ENABLED = True
 
-	def __init__(self, connection, parent=None):
+	def __init__(self, connection, settings, parent=None):
 		super().__init__(parent=parent)
 		self._connection = connection
+		self._settings = settings
 
 	@classmethod
 	def tabIcon(cls):
@@ -79,8 +81,8 @@ class SwdTab(ConnectWindowTab):
 	ICON = 'mdi7.bug-outline'
 	ENABLED = True
 
-	def __init__(self, connection, parent=None):
-		super().__init__(connection, parent=parent)
+	def __init__(self, connection, settings, parent=None):
+		super().__init__(connection, settings, parent=parent)
 		# Keep worker references alive until their signal has been delivered.
 		self._workers = set()
 		self._createUi()
@@ -215,8 +217,8 @@ class SerialTab(ConnectWindowTab):
 	#: Tree column holding the per-row refresh button.
 	BUTTON_COLUMN = 3
 
-	def __init__(self, connection, parent=None):
-		super().__init__(connection, parent=parent)
+	def __init__(self, connection, settings, parent=None):
+		super().__init__(connection, settings, parent=parent)
 		# Keep worker references alive until their signal has been delivered.
 		self._workers = set()
 		self._createUi()
@@ -351,8 +353,8 @@ class BleTab(ConnectWindowTab):
 	#: The BLE transport this tab connects over.
 	SCHEME = 'rible'
 
-	def __init__(self, connection, parent=None):
-		super().__init__(connection, parent=parent)
+	def __init__(self, connection, settings, parent=None):
+		super().__init__(connection, settings, parent=parent)
 		# Keep worker references alive until their signal has been delivered.
 		self._workers = set()
 		self._createUi()
@@ -440,6 +442,139 @@ class BleTab(ConnectWindowTab):
 		return item.data(Qt.UserRole) if item is not None else None
 
 
+class SshTab(ConnectWindowTab):
+	"""Connect to a device through the pynbus2-ssh-proxy of a DAQ controller over the ssh transport.
+
+	SSH hosts cannot be discovered, the sessions are predefined in the settings as a list of
+	``{"name": <label>, "uri": "ssh://[<user>@]<host>[:<port>][?identity=<key file>]"}`` under
+	:attr:`SESSIONS`. The devices are those the proxy probes on the controller.
+	"""
+
+	NAME = 'SSH'
+	ICON = 'mdi7.console-network'
+	# The OpenSSH client runs as a subprocess.
+	ENABLED = shutil.which('ssh') is not None
+
+	#: Settings key of the predefined SSH sessions.
+	SESSIONS = 'ssh.sessions'
+
+	def __init__(self, connection, settings, parent=None):
+		super().__init__(connection, settings, parent=parent)
+		# Keep worker references alive until their signal has been delivered.
+		self._workers = set()
+		self._createUi()
+		self._refresh()
+
+	@classmethod
+	def sessions(cls, settings):
+		"""The (name, uri) of the SSH sessions in the ``settings``."""
+		sessions = settings.get(cls.SESSIONS, [])
+		if not isinstance(sessions, list):
+			return []
+		return [(s.get('name') or s['uri'], s['uri']) for s in sessions
+		        if isinstance(s, dict) and isinstance(s.get('uri'), str)]
+
+	def _createUi(self):
+		l = QVBoxLayout()
+		self.setLayout(l)
+		l.addWidget(WrappedLabel(
+			'Connect to a device attached to a DAQ controller, through the pynbus2 SSH proxy running on it. '
+			'The SSH sessions are configured in the settings file (%s), authentication is taken from '
+			'the SSH configuration and agent.\n\n'
+			'Select the SSH session:' % self._settings.path
+		))
+
+		cb = _ShrinkingComboBox()
+		cb.setIconSize(QSize(24, 24))
+		for name, uri in self.sessions(self._settings):
+			cb.addItem(icon('mdi7.server-network', color='#448', scale_factor=1), name, uri)
+			cb.setItemData(cb.count() - 1, uri, Qt.ToolTipRole)
+		cb.currentIndexChanged.connect(self._refresh)
+		l.addWidget(cb)
+		self._session_cb = cb
+
+		l.addSpacing(16)
+
+		row = QHBoxLayout()
+		row.addWidget(WrappedLabel('Select the device to connect to:'), 1)
+		btn = QToolButton()
+		btn.setAutoRaise(True)
+		btn.setToolTip('Refresh the devices')
+		btn.setIcon(icon('mdi7.refresh', color='#888', scale_factor=1))
+		btn.clicked.connect(self._refresh)
+		row.addWidget(btn, alignment=Qt.AlignBottom)
+		self._refresh_btn = btn
+		l.addLayout(row)
+
+		devices = QTreeWidget()
+		devices.setColumnCount(2)
+		devices.setHeaderLabels(['Name', 'URI'])
+		devices.setRootIsDecorated(False)
+		devices.setIconSize(QSize(20, 20))
+		devices.header().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+		l.addWidget(devices, 1)
+		self._devices = devices
+
+		self._status = WrappedLabel()
+		l.addWidget(self._status)
+
+	@staticmethod
+	def _describe(uri):
+		"""The name of a device URI: the name it carries, or the remote URI it proxies to."""
+		parsed = parse_uri(uri)
+		return parsed.get('name') or parsed.path.lstrip('/') or parsed.host
+
+	@Slot()
+	def _refresh(self):
+		self._devices.clear()
+		session = self._session_cb.currentData()
+		if session is None:
+			self._status.setText('No SSH sessions configured, add them as "%s" to the settings file.' % self.SESSIONS)
+			return
+		self._refresh_btn.setEnabled(False)
+		self._refresh_btn.setIcon(icon('mdi7.loading', color='#888', animation=spin(self._refresh_btn),
+		                               scale_factor=1))
+		self._status.setText('Connecting to %s...' % self._session_cb.currentText())
+		# The session goes along, the results of a session no longer selected are dropped.
+		worker = _ProbeWorker(self._connection, session, session)
+		worker.done.connect(self._onProbeDone)
+		worker.failed.connect(self._onProbeFailed)
+		self._workers.add(worker)
+		worker.start()
+
+	@Slot(object, list)
+	def _onProbeDone(self, session, results):
+		if not self._finishProbe(session):
+			return
+		for uri in results:
+			item = QTreeWidgetItem([self._describe(uri), uri])
+			item.setData(0, Qt.UserRole, uri)
+			item.setIcon(0, icon('mdi7.access-point', color='#448', scale_factor=1))
+			item.setToolTip(1, uri)
+			self._devices.addTopLevelItem(item)
+		if results:
+			self._devices.setCurrentItem(self._devices.topLevelItem(0))
+		self._status.setText('' if results else 'No devices found.')
+
+	@Slot(object, str)
+	def _onProbeFailed(self, session, message):
+		if self._finishProbe(session):
+			self._status.setText('Listing the devices failed: %s' % message)
+
+	def _finishProbe(self, session):
+		"""Done probing ``session``, whether it is still the one selected."""
+		self._workers.discard(self.sender())
+		if session != self._session_cb.currentData():
+			return False
+		self._refresh_btn.setEnabled(True)
+		self._refresh_btn.setIcon(icon('mdi7.refresh', color='#888', scale_factor=1))
+		return True
+
+	def uri(self):
+		item = self._devices.currentItem()
+		return item.data(0, Qt.UserRole) if item is not None else None
+
+
 class _TabScrollArea(QScrollArea):
 	"""Scrolls a connect window tab when the window is lower than the tab, e.g. on a small screen. Never
 	horizontally, the tab wraps its texts to the width of the window.
@@ -464,9 +599,10 @@ class ConnectWindow(AppletWindow):
 
 	LAYER = AppletWindow.CONNECT
 
-	def __init__(self, connection, parent=None):
+	def __init__(self, connection, settings, parent=None):
 		super().__init__(parent=parent)
 		self._connection = connection
+		self._settings = settings
 		# The MDI area the window is shown in, it is taken out of it while hidden, see _dismiss().
 		self._area = None
 		# Only the title, the window shows until connected and Exit quits the application.
@@ -495,7 +631,7 @@ class ConnectWindow(AppletWindow):
 
 		# One tab per ConnectWindowTab subclass; each carries its own name, icon and enabled state.
 		for i, tab_cls in enumerate(ConnectWindowTab.__subclasses__()):
-			tab = tab_cls(self._connection)
+			tab = tab_cls(self._connection, self._settings)
 			self._tabs.addTab(_TabScrollArea(tab), tab_cls.NAME)
 			self._tabs.setTabIcon(i, tab_cls.tabIcon())
 			self._tabs.setTabEnabled(i, tab_cls.ENABLED)

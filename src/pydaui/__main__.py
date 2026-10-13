@@ -324,7 +324,7 @@ class DauiApplication(QApplication):
 		else:
 			self._main_window.show()
 
-		self._connect_window = ConnectWindow(self._connection)
+		self._connect_window = ConnectWindow(self._connection, self._settings)
 		self._main_window.addWindow(self._connect_window)
 
 		self._connection.connectionChanged.connect(self._connectionChanged)
