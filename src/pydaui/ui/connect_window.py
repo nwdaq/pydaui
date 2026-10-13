@@ -463,7 +463,6 @@ class SshTab(ConnectWindowTab):
 		# Keep worker references alive until their signal has been delivered.
 		self._workers = set()
 		self._createUi()
-		self._refresh()
 
 	@classmethod
 	def sessions(cls, settings):
@@ -489,6 +488,10 @@ class SshTab(ConnectWindowTab):
 		for name, uri in self.sessions(self._settings):
 			cb.addItem(icon('mdi7.server-network', color='#448', scale_factor=1), name, uri)
 			cb.setItemData(cb.count() - 1, uri, Qt.ToolTipRole)
+		# None selected at first: listing the devices of a session connects to it and may ask for a password,
+		# only once the user picks one, not when the window is created (hidden when connecting on startup).
+		cb.setPlaceholderText('Select a session' if cb.count() else 'No SSH sessions configured')
+		cb.setCurrentIndex(-1)
 		cb.currentIndexChanged.connect(self._refresh)
 		l.addWidget(cb)
 		self._session_cb = cb
@@ -517,6 +520,8 @@ class SshTab(ConnectWindowTab):
 
 		self._status = WrappedLabel()
 		l.addWidget(self._status)
+		if not cb.count():
+			self._status.setText('No SSH sessions configured, add them as "%s" to the settings file.' % self.SESSIONS)
 
 	@staticmethod
 	def _describe(uri):
@@ -529,7 +534,6 @@ class SshTab(ConnectWindowTab):
 		self._devices.clear()
 		session = self._session_cb.currentData()
 		if session is None:
-			self._status.setText('No SSH sessions configured, add them as "%s" to the settings file.' % self.SESSIONS)
 			return
 		self._refresh_btn.setEnabled(False)
 		self._refresh_btn.setIcon(icon('mdi7.loading', color='#888', animation=spin(self._refresh_btn),
