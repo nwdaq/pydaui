@@ -335,6 +335,9 @@ class AppletWindow(QMdiSubWindow):
 	#: Whether the window stays on top of all the others, whatever their layers, e.g. a progress.
 	ON_TOP = False
 
+	#: Whether the window stays on top of the ON_TOP ones too, e.g. a password a connection waits for.
+	TOPMOST = False
+
 	def __init__(self, parent=None):
 		super().__init__(parent=parent)
 

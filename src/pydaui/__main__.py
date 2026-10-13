@@ -29,6 +29,7 @@ from pydaui.applets import conf
 from pydaui.connection import *
 from pydaui.ui.menu import *
 from pydaui.ui.connect_window import ConnectWindow, ConnectingWindow
+from pydaui.ui.ssh_prompts import SshPrompts
 from pydaui.ui.about_window import AboutWindow
 from pydaui.ui.changelog_window import ChangelogWindow
 from pydaui.ui.settings_window import SettingsWindow, UiSection, DeviceSection
@@ -121,6 +122,9 @@ class MdiArea(QMdiArea):
 					window.raise_()
 		for window in windows:
 			if getattr(window, 'ON_TOP', False):
+				window.raise_()
+		for window in windows:
+			if getattr(window, 'TOPMOST', False):
 				window.raise_()
 
 	def addSubWindow(self, widget, flags=Qt.WindowFlags()):
@@ -323,6 +327,9 @@ class DauiApplication(QApplication):
 			self._main_window.showMaximized()
 		else:
 			self._main_window.show()
+
+		# Before connecting, which may ask for an SSH password.
+		self._ssh_prompts = SshPrompts(self._main_window)
 
 		self._connect_window = ConnectWindow(self._connection, self._settings)
 		self._main_window.addWindow(self._connect_window)

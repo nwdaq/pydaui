@@ -6,7 +6,7 @@
 # All rights reserved.
 
 import html
-import shutil
+import importlib.util
 import threading
 from pathlib import Path
 from urllib.parse import urlencode
@@ -452,8 +452,8 @@ class SshTab(ConnectWindowTab):
 
 	NAME = 'SSH'
 	ICON = 'mdi7.console-network'
-	# The OpenSSH client runs as a subprocess.
-	ENABLED = shutil.which('ssh') is not None
+	# Not on Android, which has no paramiko.
+	ENABLED = importlib.util.find_spec('paramiko') is not None
 
 	#: Settings key of the predefined SSH sessions.
 	SESSIONS = 'ssh.sessions'
@@ -479,8 +479,8 @@ class SshTab(ConnectWindowTab):
 		self.setLayout(l)
 		l.addWidget(WrappedLabel(
 			'Connect to a device attached to a DAQ controller, through the pynbus2 SSH proxy running on it. '
-			'The SSH sessions are configured in the settings file (%s), authentication is taken from '
-			'the SSH configuration and agent.\n\n'
+			'The SSH sessions are configured in the settings file (%s). The keys of the SSH agent and '
+			'those in ~/.ssh are used, a password is asked for when needed.\n\n'
 			'Select the SSH session:' % self._settings.path
 		))
 
