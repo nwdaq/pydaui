@@ -478,13 +478,6 @@ class SshTab(ConnectWindowTab):
 
 		cb = _ShrinkingComboBox()
 		cb.setIconSize(QSize(24, 24))
-		for name, uri in self.sessions(self._settings):
-			cb.addItem(icon('mdi7.server-network', color='#448', scale_factor=1), name, uri)
-			cb.setItemData(cb.count() - 1, uri, Qt.ToolTipRole)
-		# None selected at first: listing the devices of a session connects to it and may ask for a password,
-		# only once the user picks one, not when the window is created (hidden when connecting on startup).
-		cb.setPlaceholderText('Select a session' if cb.count() else 'No SSH sessions configured')
-		cb.setCurrentIndex(-1)
 		cb.currentIndexChanged.connect(self._refresh)
 		l.addWidget(cb)
 		self._session_cb = cb
@@ -513,8 +506,35 @@ class SshTab(ConnectWindowTab):
 
 		self._status = WrappedLabel()
 		l.addWidget(self._status)
-		if not cb.count():
-			self._status.setText('No SSH sessions configured, add them in Settings, Device connection.')
+		self._loadSessions()
+
+	def showEvent(self, event):
+		super().showEvent(event)
+		# The sessions may have been edited in the settings meanwhile.
+		self._loadSessions()
+
+	def _loadSessions(self):
+		"""Fill the session combo box from the settings, if they changed. The selected session stays selected
+		if it is still there, its devices are listed again if its URI changed (they carry it)."""
+		sessions = self.sessions(self._settings)
+		cb = self._session_cb
+		if sessions == [(cb.itemText(i), cb.itemData(i)) for i in range(cb.count())]:
+			return
+		selected = (cb.currentText(), cb.currentData()) if cb.currentIndex() >= 0 else None
+		cb.blockSignals(True)
+		cb.clear()
+		for name, uri in sessions:
+			cb.addItem(icon('mdi7.server-network', color='#448', scale_factor=1), name, uri)
+			cb.setItemData(cb.count() - 1, uri, Qt.ToolTipRole)
+		cb.setPlaceholderText('Select a session' if sessions else 'No SSH sessions configured')
+		# None selected at first: listing the devices of a session connects to it and may ask for a password,
+		# only once the user picks one, not when the window is created (hidden when connecting on startup).
+		names = [name for name, uri in sessions]
+		cb.setCurrentIndex(names.index(selected[0]) if selected and selected[0] in names else -1)
+		cb.blockSignals(False)
+		if selected != ((cb.currentText(), cb.currentData()) if cb.currentIndex() >= 0 else None):
+			self._refresh()
+		self._status.setText('' if sessions else 'No SSH sessions configured, add them in Settings, Device connection.')
 
 	@staticmethod
 	def _describe(uri):
@@ -527,6 +547,10 @@ class SshTab(ConnectWindowTab):
 		self._devices.clear()
 		session = self._session_cb.currentData()
 		if session is None:
+			# No session selected (any more), a probe still running is ignored when it finishes.
+			self._refresh_btn.setEnabled(True)
+			self._refresh_btn.setIcon(icon('mdi7.refresh', color='#888', scale_factor=1))
+			self._status.setText('')
 			return
 		self._refresh_btn.setEnabled(False)
 		self._refresh_btn.setIcon(icon('mdi7.loading', color='#888', animation=spin(self._refresh_btn),
