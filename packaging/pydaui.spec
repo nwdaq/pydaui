@@ -7,7 +7,7 @@ import os
 import subprocess
 import sys
 from glob import glob
-from PyInstaller.utils.hooks import collect_all, copy_metadata
+from PyInstaller.utils.hooks import collect_all
 
 src = os.path.join(SPECPATH, '..', 'src', 'pydaui')
 
@@ -45,12 +45,11 @@ binaries = []
 hiddenimports = ['pydaui.applets.mq-live-data']
 
 # Packages discovered through entry points need their metadata and data files
-for package in ['fonticon_mdi7', 'pyocd', 'cmsis_pack_manager', 'pylink']:
+for package in ['pyocd', 'cmsis_pack_manager', 'pylink']:
 	d, b, h = collect_all(package)
 	datas += d
 	binaries += b
 	hiddenimports += h
-datas += copy_metadata('fonticon-materialdesignicons7')
 
 
 a = Analysis(
@@ -62,9 +61,9 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    # qtpy (pulled by superqt) references every Qt module, keep only what is used
+    # Qt modules not used
     excludes=['numpy', 'PIL', 'PySide6.QtOpenGL', 'PySide6.QtOpenGLWidgets',
-        'PySide6.QtNetwork', 'PySide6.QtDataVisualization', 'qtpy.QtDataVisualization'],
+        'PySide6.QtNetwork', 'PySide6.QtDataVisualization'],
     noarchive=False,
     optimize=0,
 )
