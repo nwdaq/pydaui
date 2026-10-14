@@ -215,6 +215,65 @@ class Icons:
 		</svg>""")
 
 	@staticmethod
+	def data():
+		"""The data icon: a blue line chart over a gray baseline and axis."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<path fill="none" stroke="{Icons.DARK_GRAY}" stroke-width="1.1" stroke-linecap="round" d="M2.5 2.5 V21.5 H21.5"/>
+			<path fill="{Icons.PRIMARY_LIGHT}" stroke="none" d="M2.5 17 L8 10 L12.5 14 L20.5 4.5 V21.5 H2.5 Z" opacity="0.6"/>
+			<path fill="none" stroke="{Icons.PRIMARY}" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"
+				d="M2.5 17 L8 10 L12.5 14 L20.5 4.5"/>
+			<g fill="{Icons.WHITE}" stroke="{Icons.PRIMARY}" stroke-width="1.1">
+				<circle cx="8" cy="10" r="1.5"/>
+				<circle cx="12.5" cy="14" r="1.5"/>
+			</g>
+		</svg>""")
+
+	@staticmethod
+	def liveData():
+		"""The live data icon: a blue topic tree, a root with three leaves, and a red dot of a value
+		arriving at the middle one."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<path fill="none" stroke="{Icons.DARK_GRAY}" stroke-width="1.1" d="M5 7 V19 H10 M5 13 H10 M5 7 H10"/>
+			<g stroke="{Icons.PRIMARY}" stroke-width="1.1" stroke-linejoin="round">
+				<rect x="2" y="2" width="6" height="5" rx="1" fill="{Icons.PRIMARY}"/>
+				<rect x="10" y="4.5" width="11" height="5" rx="1" fill="{Icons.PRIMARY_LIGHT}"/>
+				<rect x="10" y="10.5" width="11" height="5" rx="1" fill="{Icons.WHITE}"/>
+				<rect x="10" y="16.5" width="11" height="5" rx="1" fill="{Icons.PRIMARY_LIGHT}"/>
+			</g>
+			<circle cx="19.5" cy="11" r="3" fill="{Icons.RED}" stroke="{Icons.DARK_RED}" stroke-width="1.1"/>
+		</svg>""")
+
+	@staticmethod
+	def pause():
+		"""A pause icon: two blue bars."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<g fill="{Icons.PRIMARY_LIGHT}" stroke="{Icons.PRIMARY}" stroke-width="1.1" stroke-linejoin="round">
+				<rect x="6" y="4.5" width="4" height="15" rx="0.8"/>
+				<rect x="14" y="4.5" width="4" height="15" rx="0.8"/>
+			</g>
+		</svg>""")
+
+	@staticmethod
+	def play():
+		"""A play icon: a green triangle pointing right."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<path fill="{Icons.LIGHT_GREEN}" stroke="{Icons.DARK_GREEN}" stroke-width="1.1" stroke-linejoin="round"
+				d="M7 4.5 L19 12 L7 19.5 Z"/>
+		</svg>""")
+
+	@staticmethod
+	def clear():
+		"""A clear icon: a white sheet with gray lines, crossed out by the red cancel cross, lower right."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<g stroke="{Icons.DARK_GRAY}" stroke-width="1.1" stroke-linejoin="round">
+				<rect x="3.5" y="2.5" width="13" height="17" rx="1" fill="{Icons.WHITE}"/>
+				<path d="M6.5 7 H13.5 M6.5 10.5 H13.5 M6.5 14 H10.5" stroke="{Icons.GRAY}" stroke-linecap="round"/>
+			</g>
+			<path transform="rotate(45 16.5 16.5)" fill="{Icons.LIGHT_RED}" stroke="{Icons.DARK_RED}" stroke-width="1.1" stroke-linejoin="round"
+				d="M15.2 11 H17.8 V15.2 H22 V17.8 H17.8 V22 H15.2 V17.8 H11 V15.2 H15.2 Z"/>
+		</svg>""")
+
+	@staticmethod
 	def about():
 		"""The about icon: a letter "i" in a circle."""
 		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">

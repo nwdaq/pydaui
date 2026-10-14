@@ -41,7 +41,8 @@ changelog.write(_changelog, SPECPATH)
 datas.append((_changelog, 'pydaui'))
 
 binaries = []
-hiddenimports = []
+# Imported with importlib, its name is not a Python identifier
+hiddenimports = ['pydaui.applets.mq-live-data']
 
 # Packages discovered through entry points need their metadata and data files
 for package in ['fonticon_mdi7', 'pyocd', 'cmsis_pack_manager', 'pylink']:

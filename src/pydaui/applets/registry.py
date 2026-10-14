@@ -20,6 +20,7 @@ To add an applet, add its :class:`Applet` to :data:`APPLETS`. Its ``panel`` name
 buttons go to, grouping the applets by function. The panels are listed in :data:`PANELS`.
 """
 
+import importlib
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
@@ -27,6 +28,9 @@ from PySide6.QtGui import QIcon
 
 from pydaui.applets import conf, flash, update
 from pydaui.ui.icons import Icons
+
+# The module name is not a Python identifier.
+mq_live_data = importlib.import_module('pydaui.applets.mq-live-data')
 
 
 @dataclass(frozen=True)
@@ -76,6 +80,7 @@ PANELS = (
 	('Configuration', Icons.conf),
 	('Storage', Icons.storage),
 	('System', Icons.system),
+	('Data', Icons.data),
 )
 
 #: The applets in the order they are offered within their panels.
@@ -84,6 +89,7 @@ APPLETS = (
 	Applet(flash.PROTOCOL, 'Flash', Icons.storage, 'Storage', flash.FlashWindow),
 	Applet(update.PROTOCOL, 'Update', Icons.update, 'System', update.UpdateWindow, probe=update.probe,
 	       settings=True),
+	Applet(mq_live_data.PROTOCOL, 'MQ live data', Icons.liveData, 'Data', mq_live_data.MqLiveDataWindow),
 )
 
 
