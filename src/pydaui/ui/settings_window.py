@@ -37,12 +37,11 @@ class SettingsGroup(QWidget):
 		self._title.setVisible(bool(title))
 
 
-class SettingsSection(QWidget):
-	"""Base class for a section of the settings window.
+class SettingsPage(QWidget):
+	"""Base class for a page of settings, a section of the settings window or a page of a section.
 
-	Each subclass is one section, listed on the left with its :attr:`NAME` and :meth:`sectionIcon`, in the
-	order the subclasses are defined. Its texts wrap, the check boxes and labels are :class:`WrappedCheckBox`
-	and :class:`WrappedLabel`, so that it is never wider than the window, e.g. maximized on a small screen.
+	It is listed on the left of the settings window with its :attr:`NAME` and :meth:`sectionIcon`. Its texts wrap, the check boxes and labels are :class:`WrappedCheckBox` and :class:`WrappedLabel`, so
+	that it is never wider than the window, e.g. maximized on a small screen.
 	"""
 
 	NAME = ''
@@ -93,6 +92,17 @@ class SettingsSection(QWidget):
 		group = SettingsGroup(title, *widgets)
 		self._form.addRow(group)
 		return group
+
+
+class SettingsSection(SettingsPage):
+	"""Base class for a section of the settings window.
+
+	Each subclass is one section, listed on the left in the order the subclasses are defined. A section with
+	:attr:`PAGES` has no content of its own, its pages are listed below it and clicking it shows the first one.
+	"""
+
+	#: The :class:`SettingsPage` subclasses listed below the section.
+	PAGES = ()
 
 
 class GeneralSection(SettingsSection):
@@ -386,40 +396,71 @@ class RepositoriesSection(SettingsSection):
 		return Icons.plum()
 
 
-class _SectionList(QListWidget):
-	"""The list of sections, as wide as its widest item but at least the minimal width."""
+class _SectionTree(QTreeWidget):
+	"""The tree of sections, as wide as its widest item but at least the minimal width."""
 
 	def sizeHint(self):
 		hint = super().sizeHint()
 		hint.setWidth(max(self.minimumWidth(), self.sizeHintForColumn(0) + 2 * self.frameWidth()))
 		return hint
 
+	def moveCursor(self, action, modifiers):
+		# Moving up from a page skips the sections it is in, selecting one selects its first page again.
+		index = super().moveCursor(action, modifiers)
+		current = self.currentIndex()
+		while action == QAbstractItemView.MoveUp and index.isValid() and self._contains(index, current):
+			above = self.indexAbove(index)
+			if not above.isValid():
+				return current
+			index = above
+		return index
+
+	@staticmethod
+	def _contains(index, other):
+		"""Whether the item at ``other`` is below the one at ``index``."""
+		parent = other.parent()
+		while parent.isValid():
+			if parent == index:
+				return True
+			parent = parent.parent()
+		return False
+
 
 class SectionPages(QWidget):
-	"""A list of sections on the left on a dark background, the page of the selected one on the right with
-	the ``footer`` widget, if any, below it."""
+	"""A tree of sections on the left on a dark background, the page of the selected one on the right with
+	the ``footer`` widget, if any, below it. A section with pages lists them below it, see :meth:`addGroup`.
+	Only the sections the selected page is in are expanded."""
 
-	#: Minimal width of the section list.
+	#: Minimal width of the section tree.
 	LIST_MIN_WIDTH = 200
 	LIST_ICON_SIZE = 24
+	#: How far the pages of a section are indented.
+	LIST_INDENT = 20
+
+	#: The index of the page an item shows, in its data.
+	PAGE_ROLE = Qt.UserRole
 
 	LIST_STYLE = """
-		QListWidget {
+		QTreeWidget {
 			background-color: #444;
 			border: none;
 			outline: 0;
 			padding: 6px 0;
+			/* The indentation of the selected and hovered pages too. */
+			show-decoration-selected: 1;
 		}
-		QListWidget::item {
+		QTreeWidget::item, QTreeWidget::branch {
 			/* Without a background the padding applies to the selected and hovered items only. */
 			background-color: transparent;
+		}
+		QTreeWidget::item {
 			color: #fff;
 			padding: 8px 10px;
 		}
-		QListWidget::item:hover {
+		QTreeWidget::item:hover, QTreeWidget::branch:hover {
 			background-color: #555;
 		}
-		QListWidget::item:selected {
+		QTreeWidget::item:selected, QTreeWidget::branch:selected {
 			background-color: #666;
 		}
 	"""
@@ -427,14 +468,19 @@ class SectionPages(QWidget):
 	def __init__(self, footer=None):
 		super().__init__()
 
-		self._list = _SectionList()
-		self._list.setMinimumWidth(self.LIST_MIN_WIDTH)
-		self._list.setIconSize(QSize(self.LIST_ICON_SIZE, self.LIST_ICON_SIZE))
-		self._list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-		self._list.setStyleSheet(self.LIST_STYLE)
+		self._tree = _SectionTree()
+		self._tree.setHeaderHidden(True)
+		self._tree.setRootIsDecorated(False)
+		# Expanded and collapsed by selecting the pages.
+		self._tree.setExpandsOnDoubleClick(False)
+		self._tree.setIndentation(self.LIST_INDENT)
+		self._tree.setMinimumWidth(self.LIST_MIN_WIDTH)
+		self._tree.setIconSize(QSize(self.LIST_ICON_SIZE, self.LIST_ICON_SIZE))
+		self._tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+		self._tree.setStyleSheet(self.LIST_STYLE)
 
 		self._pages = QStackedWidget()
-		self._list.currentRowChanged.connect(self._pages.setCurrentIndex)
+		self._tree.currentItemChanged.connect(self._showItem)
 
 		right = QVBoxLayout()
 		right.setContentsMargins(0, 0, 0, 0)
@@ -446,13 +492,32 @@ class SectionPages(QWidget):
 		layout = QHBoxLayout()
 		layout.setContentsMargins(0, 0, 0, 0)
 		layout.setSpacing(0)
-		layout.addWidget(self._list)
+		layout.addWidget(self._tree)
 		layout.addLayout(right, stretch=1)
 		self.setLayout(layout)
 
-	def addPage(self, widget, name, page_icon=QIcon()):
-		"""Add the page ``widget`` listed as ``name``, the first one added is selected."""
-		self._list.addItem(QListWidgetItem(page_icon, name))
+	def addGroup(self, name, group_icon=QIcon(), group=None):
+		"""Add a section without a page of its own listed as ``name``, below the ``group`` if given. Its pages
+		(or sections) are added below it with :meth:`addPage` (or this method). Selecting it selects its first
+		page."""
+		item = QTreeWidgetItem([name])
+		item.setIcon(0, group_icon)
+		if group is None:
+			self._tree.addTopLevelItem(item)
+		else:
+			group.addChild(item)
+		return item
+
+	def addPage(self, widget, name, page_icon=QIcon(), group=None):
+		"""Add the page ``widget`` listed as ``name``, below the ``group`` if given. The first one added is
+		selected."""
+		item = QTreeWidgetItem([name])
+		item.setIcon(0, page_icon)
+		item.setData(0, self.PAGE_ROLE, self._pages.count())
+		if group is None:
+			self._tree.addTopLevelItem(item)
+		else:
+			group.addChild(item)
 		# Scrolled when the window is lower than the page, e.g. maximized on a small screen. Never
 		# horizontally, the page wraps to the width of the window.
 		scroll = QScrollArea()
@@ -461,12 +526,48 @@ class SectionPages(QWidget):
 		scroll.setFrameShape(QFrame.NoFrame)
 		scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 		self._pages.addWidget(scroll)
-		if self._list.currentRow() < 0:
-			self._list.setCurrentRow(0)
+		if self._tree.currentItem() is None:
+			self._tree.setCurrentItem(item)
+
+	@Slot(QTreeWidgetItem, QTreeWidgetItem)
+	def _showItem(self, item, previous):
+		# Once the click selecting the item is handled: the view selects the item under the mouse after
+		# making it the current one, another one when expanding or collapsing moved the items meanwhile.
+		if item is not None:
+			QTimer.singleShot(0, lambda: self._select(item))
+
+	def _select(self, item):
+		"""Show the page of the current ``item``. A section shows no page, its first one is selected instead."""
+		if item is not self._tree.currentItem():
+			return
+		if item.childCount():
+			leaf = item
+			while leaf.childCount():
+				leaf = leaf.child(0)
+			self._tree.setCurrentItem(leaf)
+			return
+		self._expandOnly(item)
+		if item.data(0, self.PAGE_ROLE) is not None:
+			self._pages.setCurrentIndex(item.data(0, self.PAGE_ROLE))
+
+	def _expandOnly(self, item):
+		"""Expand the sections ``item`` is in, collapse all the others."""
+		path = set()
+		parent = item.parent()
+		while parent is not None:
+			path.add(id(parent))
+			parent = parent.parent()
+		iterator = QTreeWidgetItemIterator(self._tree)
+		while iterator.value():
+			section = iterator.value()
+			if section.childCount():
+				section.setExpanded(id(section) in path)
+			iterator += 1
 
 
 class SettingsWindow(AppletWindow):
-	"""The settings, one page per :class:`SettingsSection` subclass, the Close button at the bottom right."""
+	"""The settings, one page per :class:`SettingsSection` subclass or each of its pages, the Close button at
+	the bottom right."""
 
 	LAYER = AppletWindow.TOOL
 
@@ -487,6 +588,11 @@ class SettingsWindow(AppletWindow):
 
 		self._pages = SectionPages(footer=self._tb)
 		for section_cls in SettingsSection.__subclasses__():
-			self._pages.addPage(section_cls(settings), self.tr(section_cls.NAME), section_cls.sectionIcon())
+			if section_cls.PAGES:
+				group = self._pages.addGroup(self.tr(section_cls.NAME), section_cls.sectionIcon())
+				for page_cls in section_cls.PAGES:
+					self._pages.addPage(page_cls(settings), self.tr(page_cls.NAME), page_cls.sectionIcon(), group)
+			else:
+				self._pages.addPage(section_cls(settings), self.tr(section_cls.NAME), section_cls.sectionIcon())
 		self.setWidget(self._pages)
 		self.resize(720, 520)
