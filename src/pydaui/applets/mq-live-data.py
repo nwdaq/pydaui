@@ -107,6 +107,66 @@ def format_value(value):
 	return str(value)
 
 
+#: The precisions offered in the display panels, the index is the number of decimals.
+PRECISIONS = ('0', '0.0', '0.00', '0.000', '0.0000', '0.00000', '0.000000')
+DEFAULT_PRECISION = 2
+
+#: The number styles of the display panels.
+STYLE_INTEGRAL = 'Constant integral part'
+STYLE_DIGITS = 'Constant number of digits'
+STYLE_FRACTIONAL = 'Constant fractional part'
+STYLES = (STYLE_INTEGRAL, STYLE_DIGITS, STYLE_FRACTIONAL)
+DEFAULT_STYLE = STYLE_FRACTIONAL
+
+
+def _split(value, decimals):
+	"""The sign, the integral and the fractional digits of ``value`` rounded to ``decimals``."""
+	text = f'{abs(value):.{decimals}f}'
+	integral, _, fraction = text.partition('.')
+	sign = '-' if value < 0 and text.strip('0.') else ''
+	return sign, integral, fraction
+
+
+def format_number(value, decimals, style, zero_pad, integral_width=0):
+	"""The number ``value`` formatted by a ``style`` of :data:`STYLES` with ``decimals`` decimals:
+
+	- :data:`STYLE_FRACTIONAL`: always ``decimals`` fractional digits, the integral part as wide as needed.
+	- :data:`STYLE_INTEGRAL`: like that, with the integral part padded to ``integral_width`` digits.
+	- :data:`STYLE_DIGITS`: ``1 + decimals`` digits in total, the decimal point moves. Fewer fractional
+	  digits (down to none) as the integral part grows.
+
+	The trailing zeros of the fraction and the padding of the integral part are zeros with ``zero_pad``,
+	else spaces, which keep the digits in place in a monospace font. Returns the text and the width of its
+	integral part.
+	"""
+	if style == STYLE_DIGITS:
+		total = 1 + decimals
+		sign, integral, fraction = _split(value, decimals)
+		decimals = max(0, total - len(integral))
+		sign, integral, fraction = _split(value, decimals)
+		if decimals and len(integral) + decimals > total:
+			# Rounding carried into a new integral digit, e.g. 9.99 to 10.0.
+			sign, integral, fraction = _split(value, decimals - 1)
+	else:
+		sign, integral, fraction = _split(value, decimals)
+
+	if not zero_pad and fraction:
+		stripped = fraction.rstrip('0')
+		fraction = stripped + ' ' * (len(fraction) - len(stripped))
+	if fraction:
+		point = '.' if fraction.strip() else ' '
+		fraction = point + fraction
+
+	width = len(integral)
+	if style == STYLE_INTEGRAL and integral_width > len(integral):
+		pad = integral_width - len(integral)
+		number = sign + '0' * pad + integral if zero_pad else ' ' * pad + sign + integral
+		width = integral_width
+	else:
+		number = sign + integral
+	return number + fraction, width
+
+
 class _Topic:
 	"""The values received on one topic: the last one and the times of the recent ones."""
 
@@ -242,7 +302,13 @@ class _Poller(QObject):
 
 class MqLiveDataTreeWidget(GuideTreeWidget):
 	"""The received topics as a tree of their levels, each topic shown once with its last value. Stale
-	topics are dimmed, so are the levels holding only stale topics."""
+	topics are dimmed, so are the levels holding only stale topics.
+
+	The topics have a check box in the Select column, ``selectionChanged`` carries the topic and whether it
+	is selected now. Removing a selected topic deselects it.
+	"""
+
+	selectionChanged = Signal(str, bool)
 
 	#: The full topic of an item.
 	TOPIC_ROLE = Qt.UserRole
@@ -252,6 +318,7 @@ class MqLiveDataTreeWidget(GuideTreeWidget):
 	TYPE_COLUMN = 2
 	SEEN_COLUMN = 3
 	RATE_COLUMN = 4
+	SELECT_COLUMN = 5
 
 	#: Colour of the type.
 	TYPE_COLOR = '#999'
@@ -259,8 +326,8 @@ class MqLiveDataTreeWidget(GuideTreeWidget):
 	#: Colour of a stale row.
 	STALE_COLOR = '#c4c4c4'
 
-	#: Relative widths of the Topic, Value, Type, Last seen and Rate columns.
-	COLUMN_RATIOS = (5, 4, 2, 2, 2)
+	#: Relative widths of the Topic, Value, Type, Last seen, Rate and Select columns.
+	COLUMN_RATIOS = (5, 4, 2, 2, 2, 2)
 
 	#: How often the times and the stale rows are updated, in milliseconds.
 	REFRESH_MS = 500
@@ -273,11 +340,14 @@ class MqLiveDataTreeWidget(GuideTreeWidget):
 		self._topics = {}
 		# The items shown dimmed.
 		self._stale = set()
+		# The selected topics.
+		self._selected = set()
 
 		# The last column takes the rest of the width, which may be narrower than the default.
 		self.header().setDefaultSectionSize(40)
-		self.setColumnCount(5)
-		self.setHeaderLabels(['Topic', 'Value', 'Type', 'Last seen', 'Rate'])
+		self.setColumnCount(6)
+		self.setHeaderLabels(['Topic', 'Value', 'Type', 'Last seen', 'Rate', 'Select'])
+		self.itemChanged.connect(self._itemChanged)
 		header = self.headerItem()
 		for column in (self.SEEN_COLUMN, self.RATE_COLUMN):
 			header.setTextAlignment(column, Qt.AlignRight | Qt.AlignVCenter)
@@ -291,15 +361,43 @@ class MqLiveDataTreeWidget(GuideTreeWidget):
 	def topicCount(self):
 		return len(self._topics)
 
+	def topic(self, name):
+		"""The values received on the topic ``name``, a :class:`_Topic`, ``None`` if there are none."""
+		return self._topics.get(name)
+
+	def setSelected(self, name, selected):
+		"""Check or uncheck the Select check box of the topic ``name``, if it is shown."""
+		item = self._items.get(name)
+		if item is not None and name in self._topics:
+			item.setCheckState(self.SELECT_COLUMN, Qt.Checked if selected else Qt.Unchecked)
+
+	@Slot(QTreeWidgetItem, int)
+	def _itemChanged(self, item, column):
+		if column != self.SELECT_COLUMN:
+			return
+		name = item.data(self.TOPIC_COLUMN, self.TOPIC_ROLE)
+		selected = item.checkState(self.SELECT_COLUMN) == Qt.Checked
+		if selected != (name in self._selected):
+			self._setSelection(name, selected)
+
+	def _setSelection(self, name, selected):
+		if selected:
+			self._selected.add(name)
+		else:
+			self._selected.discard(name)
+		self.selectionChanged.emit(name, selected)
+
 	def addValues(self, values):
 		"""Show the received :class:`pynbus2.mq.MqValue` ``values``, adding the topics not shown yet."""
 		now = time.monotonic()
 		for v in values:
 			topic = self._topics.get(v.topic)
+			item = self._item(v.topic)
 			if topic is None:
 				topic = self._topics[v.topic] = _Topic()
+				# Only the topics with values can be selected, not the levels.
+				item.setCheckState(self.SELECT_COLUMN, Qt.Unchecked)
 			topic.update(v.value, v.ts, now)
-			item = self._item(v.topic)
 			item.setText(self.VALUE_COLUMN, format_value(v.value))
 			item.setText(self.TYPE_COLUMN, type_name(v.value))
 		self._refresh()
@@ -374,10 +472,13 @@ class MqLiveDataTreeWidget(GuideTreeWidget):
 		"""Remove the topics not matching the topic ``filter``, with the levels left empty."""
 		for name in [name for name in self._topics if not topic_matches(filter, name)]:
 			del self._topics[name]
+			if name in self._selected:
+				self._setSelection(name, False)
 			item = self._items[name]
 			# The values are gone, the level stays while it has topics below it.
 			for column in range(1, self.columnCount()):
 				item.setText(column, '')
+			item.setData(self.SELECT_COLUMN, Qt.CheckStateRole, None)
 		# The deepest items first, a level is left empty once its children are removed.
 		for name in sorted(self._items, key=lambda name: -name.count('/')):
 			item = self._items[name]
@@ -387,15 +488,232 @@ class MqLiveDataTreeWidget(GuideTreeWidget):
 				del self._items[name]
 
 	def clearTopics(self):
+		for name in list(self._selected):
+			self._setSelection(name, False)
 		self.clear()
 		self._items = {}
 		self._topics = {}
 		self._stale = set()
 
 
+class _ValuePanel(QDockWidget):
+	"""A dock panel showing the last value of one topic in big monospace letters, scaled to fill the panel.
+	Dimmed while the topic is stale. Its top panel sets how the numbers are formatted, see
+	:func:`format_number`. ``closed`` tells the user closed it."""
+
+	closed = Signal(str)
+
+	#: Colour of the value, and of a stale one.
+	COLOR = '#1d3f7a'
+	STALE_COLOR = '#c4c4c4'
+
+	#: Colour of the border of the panel and of the line under its top panel.
+	BORDER_COLOR = '#d6d6d6'
+
+	#: Colour of the text of the top panel, subdued not to distract from the value.
+	BAR_TEXT_COLOR = '#555'
+
+	#: The largest and smallest font of the value, in pixels.
+	MAX_FONT_PX = 96
+	MIN_FONT_PX = 12
+
+	def __init__(self, name):
+		super().__init__(name)
+		self.name = name
+		# Identifies the panel in a saved arrangement.
+		self.setObjectName(f'mq.{name}')
+		self.setFeatures(QDockWidget.DockWidgetClosable | QDockWidget.DockWidgetMovable |
+		                 QDockWidget.DockWidgetFloatable)
+		self._stale = None
+		self._value = None
+		# The widest integral part shown, kept by the constant integral part style.
+		self._integral_width = 0
+
+		# A plain row rather than a toolbar, which would hide the controls not fitting a narrow panel. The row
+		# does not keep the panel wide, it is cut off on the right instead.
+		self._tb = QWidget()
+		self._tb.setObjectName('bar')
+		self._tb.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+		row = QHBoxLayout(self._tb)
+		row.setSizeConstraint(QLayout.SetNoConstraint)
+		row.setContentsMargins(8, 4, 8, 4)
+		row.setSpacing(4)
+		self._precision = QComboBox()
+		self._precision.addItems(PRECISIONS)
+		self._precision.setCurrentIndex(DEFAULT_PRECISION)
+		self._precision.setToolTip(self.tr('The number of decimals, the number of digits after the first one '
+		                                   'with a constant number of digits'))
+		self._precision.currentIndexChanged.connect(self._formatChanged)
+		row.addWidget(self._precision)
+		self._style = QComboBox()
+		self._style.addItems([self.tr(style) for style in STYLES])
+		self._style.setCurrentIndex(STYLES.index(DEFAULT_STYLE))
+		self._style.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+		self._style.setToolTip(self.tr('How the number is laid out'))
+		self._style.currentIndexChanged.connect(self._formatChanged)
+		row.addWidget(self._style)
+		row.addSpacing(8)
+		self._zero_pad = QCheckBox(self.tr('Zero padding'))
+		self._zero_pad.setChecked(True)
+		self._zero_pad.setToolTip(self.tr('Pad with leading and trailing zeros instead of spaces'))
+		self._zero_pad.toggled.connect(self._formatChanged)
+		row.addWidget(self._zero_pad)
+		row.addStretch()
+
+		self._label = QLabel()
+		self._label.setObjectName('value')
+		self._label.setAlignment(Qt.AlignCenter)
+		self._label.setTextFormat(Qt.PlainText)
+		self._label.setMinimumSize(120, 60)
+		self._label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+		font = QFontDatabase.systemFont(QFontDatabase.FixedFont)
+		font.setBold(True)
+		self._label.setFont(font)
+		self._label.installEventFilter(self)
+
+		content = QWidget()
+		content.setObjectName('content')
+		content.setAttribute(Qt.WA_StyledBackground)
+		content.setStyleSheet(f"""
+			QWidget#content {{ border: 1px solid {self.BORDER_COLOR}; }}
+			QWidget#bar QCheckBox, QWidget#bar QComboBox {{ color: {self.BAR_TEXT_COLOR}; }}
+		""")
+		layout = QVBoxLayout(content)
+		# Inside the border.
+		layout.setContentsMargins(1, 1, 1, 1)
+		layout.setSpacing(0)
+		layout.addWidget(self._tb)
+		layout.addWidget(self._label, stretch=1)
+		self.setWidget(content)
+		self.setStale(False)
+
+	def setValue(self, value):
+		self._value = value
+		self._show()
+
+	def _show(self):
+		value = self._value
+		if isinstance(value, (int, float)) and not isinstance(value, bool):
+			text, width = format_number(value, self._precision.currentIndex(), STYLES[self._style.currentIndex()],
+			                            self._zero_pad.isChecked(), self._integral_width)
+			self._integral_width = max(self._integral_width, width)
+		else:
+			text = format_value(value) or type_name(value)
+		if text != self._label.text():
+			self._label.setText(text)
+			self._fit()
+
+	@Slot()
+	def _formatChanged(self):
+		# The widest integral part is collected again for the new format.
+		self._integral_width = 0
+		self._show()
+
+	def setStale(self, stale):
+		if stale != self._stale:
+			self._stale = stale
+			self._label.setStyleSheet(f'QLabel#value {{ color: {self.STALE_COLOR if stale else self.COLOR}; '
+			                          f'background-color: white; border-top: 1px solid {self.BORDER_COLOR}; }}')
+
+	def eventFilter(self, obj, event):
+		if obj is self._label and event.type() == QEvent.Resize:
+			self._fit()
+		return False
+
+	def _fit(self):
+		"""Size the font so the value fills the label."""
+		text = self._label.text() or ' '
+		font = self._label.font()
+		font.setPixelSize(100)
+		metrics = QFontMetrics(font)
+		width = max(1, metrics.horizontalAdvance(text))
+		height = max(1, metrics.height())
+		scale = min((self._label.width() - 16) / width, (self._label.height() - 8) / height)
+		size = int(max(self.MIN_FONT_PX, min(self.MAX_FONT_PX, 100 * scale)))
+		if self._label.font().pixelSize() != size:
+			font.setPixelSize(size)
+			self._label.setFont(font)
+
+	def closeEvent(self, event):
+		super().closeEvent(event)
+		self.closed.emit(self.name)
+
+
+class MqDisplayArea(QMainWindow):
+	"""The dock area of the Display tab, a :class:`_ValuePanel` for every selected topic. The panels can be
+	arranged side by side, stacked, grouped into tabs or floated. ``panelClosed`` carries the topic of a panel
+	the user closed."""
+
+	panelClosed = Signal(str)
+
+	#: How often the stale panels are updated, in milliseconds.
+	REFRESH_MS = 500
+
+	def __init__(self, tree):
+		super().__init__()
+		self._tree = tree
+		self._panels = {}
+		self.setDockOptions(QMainWindow.AnimatedDocks | QMainWindow.AllowNestedDocks | QMainWindow.AllowTabbedDocks |
+		                    QMainWindow.GroupedDragging)
+		self.setDockNestingEnabled(True)
+
+		# Shown while there are no panels; hidden, it leaves the whole area to the panels.
+		self._hint = QLabel(self.tr('Select topics in the Topics tab to show their values here.'))
+		self._hint.setAlignment(Qt.AlignCenter)
+		self._hint.setStyleSheet('color: #888;')
+		self.setCentralWidget(self._hint)
+
+		self._timer = QTimer(self)
+		self._timer.setInterval(self.REFRESH_MS)
+		self._timer.timeout.connect(self._refresh)
+		self._timer.start()
+
+	def add(self, name):
+		if name in self._panels:
+			return
+		panel = _ValuePanel(name)
+		panel.closed.connect(self._closed)
+		topic = self._tree.topic(name)
+		if topic is not None:
+			panel.setValue(topic.value)
+		# Next to the panels added before, the user may rearrange them.
+		self.addDockWidget(Qt.TopDockWidgetArea, panel, Qt.Horizontal)
+		self._panels[name] = panel
+		self._hint.hide()
+		self._refresh()
+
+	def remove(self, name):
+		panel = self._panels.pop(name, None)
+		if panel is None:
+			return
+		panel.closed.disconnect(self._closed)
+		self.removeDockWidget(panel)
+		panel.deleteLater()
+		self._hint.setVisible(not self._panels)
+
+	def addValues(self, values):
+		for v in values:
+			panel = self._panels.get(v.topic)
+			if panel is not None:
+				panel.setValue(v.value)
+
+	@Slot(str)
+	def _closed(self, name):
+		self.remove(name)
+		self.panelClosed.emit(name)
+
+	@Slot()
+	def _refresh(self):
+		now = time.monotonic()
+		for name, panel in self._panels.items():
+			topic = self._tree.topic(name)
+			panel.setStale(topic is None or topic.stale(now))
+
+
 class MqLiveData(QWidget):
-	"""The live data tree with its toolbars: Pause, Clear and the poll rate on the left and the topic filter
-	on the right at the top, the polling status and the message statistics at the bottom."""
+	"""The live data with its toolbars: Pause, Clear and the poll rate on the left and the topic filter on the
+	right at the top, the polling status and the message statistics at the bottom. In between, the tabs of the
+	topic tree and of the display of the selected topics."""
 
 	#: The colour of the status, and of an invalid filter.
 	STATUS_COLOR = '#888'
@@ -405,6 +723,9 @@ class MqLiveData(QWidget):
 		super().__init__()
 		self._logger = logging.getLogger(self.__class__.__name__)
 		self._tree = MqLiveDataTreeWidget()
+		self._display = MqDisplayArea(self._tree)
+		self._tree.selectionChanged.connect(self._selectionChanged)
+		self._display.panelClosed.connect(lambda name: self._tree.setSelected(name, False))
 		# The filter the poller sends, and the totals shown in the status.
 		self._topic = DEFAULT_TOPIC
 		self._messages = 0
@@ -473,7 +794,12 @@ class MqLiveData(QWidget):
 		self._layout = QVBoxLayout()
 		self._layout.setContentsMargins(0, 0, 0, 0)
 		self._layout.addWidget(self._tb)
-		self._layout.addWidget(self._tree)
+		self._tabs = QTabWidget()
+		self._tabs.setTabPosition(QTabWidget.North)
+		self._tabs.setDocumentMode(True)
+		self._tabs.addTab(self._tree, Icons.liveData(), self.tr('Topics'))
+		self._tabs.addTab(self._display, Icons.data(), self.tr('Display'))
+		self._layout.addWidget(self._tabs)
 		self._layout.addWidget(self._bottom)
 		self.setLayout(self._layout)
 
@@ -494,7 +820,15 @@ class MqLiveData(QWidget):
 		self._messages += len(values)
 		self._missed += missed
 		self._tree.addValues(values)
+		self._display.addValues(values)
 		self._updateStatus()
+
+	@Slot(str, bool)
+	def _selectionChanged(self, name, selected):
+		if selected:
+			self._display.add(name)
+		else:
+			self._display.remove(name)
 
 	@Slot(str)
 	def _noReply(self, error):
