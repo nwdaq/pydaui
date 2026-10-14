@@ -11,7 +11,6 @@ from urllib.parse import quote, unquote, urlencode
 from PySide6.QtCore import *
 from PySide6.QtWidgets import *
 from PySide6.QtGui import *
-from superqt.fonticon import icon
 
 from pynbus2.uri import parse_uri
 
@@ -262,7 +261,7 @@ class SshSessionsPage(SettingsPage):
 		self._key = QLineEdit()
 		self._key.setPlaceholderText(self.tr('the SSH agent and the keys in ~/.ssh'))
 		browse = QToolButton()
-		browse.setIcon(icon('mdi7.folder-open-outline', color='#888', scale_factor=1))
+		browse.setIcon(Icons.folder())
 		browse.setToolTip(self.tr('Select the private key file'))
 		browse.clicked.connect(self._browseKey)
 		key_row = QHBoxLayout()
@@ -412,7 +411,7 @@ class SshSessionsPage(SettingsPage):
 
 	@staticmethod
 	def sectionIcon():
-		return icon('mdi7.console-network', color=Icons.LIGHT_BLUE, scale_factor=1)
+		return Icons.terminal()
 
 
 class ConnectionSection(SettingsSection):

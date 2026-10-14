@@ -11,7 +11,6 @@ import threading
 from PySide6.QtCore import *
 from PySide6.QtWidgets import *
 from PySide6.QtGui import *
-from superqt.fonticon import icon, spin, pulse
 
 from pydaui.applets import conf
 from pydaui.connection import *
@@ -95,10 +94,10 @@ class DeviceStatus(QWidget):
 		layout = QHBoxLayout(self)
 		layout.setContentsMargins(4, 0, 8, 0)
 		layout.setSpacing(4)
-		layout.addWidget(self._icon('mdi7.chip'))
+		layout.addWidget(self._icon(Icons.chip()))
 		layout.addWidget(self._heap)
 		layout.addSpacing(10)
-		layout.addWidget(self._icon('mdi7.clock-outline'))
+		layout.addWidget(self._icon(Icons.clock()))
 		layout.addWidget(self._uptime)
 
 		self._timer = QTimer(self)
@@ -111,9 +110,9 @@ class DeviceStatus(QWidget):
 		"""Start showing the status, call once :attr:`available` is connected."""
 		self._connectionChanged(self._connection.uri)
 
-	def _icon(self, name):
+	def _icon(self, status_icon):
 		label = QLabel()
-		label.setPixmap(icon(name, color='#666', scale_factor=1).pixmap(self.ICON_SIZE, self.ICON_SIZE))
+		label.setPixmap(status_icon.pixmap(self.ICON_SIZE, self.ICON_SIZE))
 		return label
 
 	@Slot(object)
@@ -199,7 +198,7 @@ class MainMenu(QToolBar):
 			# Flat like the toolbar buttons. It opens the menu itself, a button with a menu would show an arrow.
 			button = QToolButton()
 			button.setAutoRaise(True)
-			button.setIcon(icon('mdi7.menu', color='#444', scale_factor=1))
+			button.setIcon(Icons.menu())
 			button.setToolTip(self.tr('Menu'))
 			button.clicked.connect(lambda: self._menu.exec(button.mapToGlobal(button.rect().bottomLeft())))
 			self.addWidget(button)
@@ -220,8 +219,8 @@ class MainMenu(QToolBar):
 		self._status.available.connect(self.addWidget(self._status).setVisible)
 		self._status.start()
 
-		self._con_ok_icon = icon('mdi7.link', color='#44c', scale_factor=1)
-		self._con_none_icon = icon('mdi7.link', color='#888', scale_factor=1)
+		self._con_ok_icon = Icons.link()
+		self._con_none_icon = Icons.link(active=False)
 
 		self._state_btn = QToolButton()
 		self._state_btn.setIcon(self._con_none_icon)
@@ -230,7 +229,7 @@ class MainMenu(QToolBar):
 		self.addWidget(self._state_btn)
 
 		self._disconnect_btn = QToolButton()
-		self._disconnect_btn.setIcon(icon('mdi7.power', color='#c00', scale_factor=1))
+		self._disconnect_btn.setIcon(Icons.reset())
 		self._disconnect_btn.setText('Disconnect')
 		self._disconnect_btn.setEnabled(False)
 		self._disconnect_btn.clicked.connect(self._disconnectClicked)

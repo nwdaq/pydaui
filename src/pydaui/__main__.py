@@ -20,8 +20,6 @@ from PySide6.QtCore import *
 from PySide6.QtWidgets import *
 from PySide6.QtGui import *
 from PySide6.QtSvg import QSvgRenderer
-from superqt.fonticon import icon, spin, pulse
-# from fonticon_fa6 import FA6S
 
 import pydaui
 from pydaui import bluetooth
@@ -45,22 +43,6 @@ def assert_depends(val):
 	if not val:
 		raise ValueError('missing dependency')
 
-
-
-
-class ConfigTree(QTreeWidget):
-
-	def __init__(self):
-		super().__init__()
-
-		self.setColumnCount(5)
-		t = QTreeWidgetItem(['jeden', 'dva', 'tri', 'styri', 'pat'])
-		t.setIcon(0, icon('mdi7.forest-outline', color='#080', scale_factor=1))
-		tt = QTreeWidgetItem([str(i) for i in range(5)])
-		tt.setIcon(0, icon('mdi7.forest-outline', color='#080', scale_factor=1))
-		self.setStyleSheet('QTreeWidget::item { padding: 4px }')
-		t.addChild(tt)
-		self.addTopLevelItem(t)
 
 
 

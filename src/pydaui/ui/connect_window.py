@@ -14,7 +14,6 @@ from urllib.parse import urlencode
 from PySide6.QtCore import *
 from PySide6.QtWidgets import *
 from PySide6.QtGui import *
-from superqt.fonticon import icon, spin, pulse
 
 from pynbus2.uri import parse_uri, split_serial_path
 
@@ -53,11 +52,8 @@ class ConnectWindowTab(QWidget):
 	#: Tab title shown in the tab bar.
 	NAME = None
 
-	#: Fonticon name used for the tab icon.
+	#: Called without arguments, returns the tab icon.
 	ICON = None
-
-	#: Colour of the tab icon.
-	ICON_COLOR = '#444'
 
 	#: Whether the tab is selectable.
 	ENABLED = True
@@ -69,7 +65,7 @@ class ConnectWindowTab(QWidget):
 
 	@classmethod
 	def tabIcon(cls):
-		return icon(cls.ICON, color=cls.ICON_COLOR, scale_factor=1)
+		return cls.ICON()
 
 	def uri(self):
 		"""The connection URI selected in this tab, or ``None`` when there is nothing to connect to."""
@@ -79,7 +75,7 @@ class ConnectWindowTab(QWidget):
 class SwdTab(ConnectWindowTab):
 
 	NAME = 'SWD'
-	ICON = 'mdi7.bug-outline'
+	ICON = Icons.probe
 	ENABLED = True
 
 	def __init__(self, connection, settings, parent=None):
@@ -120,7 +116,7 @@ class SwdTab(ConnectWindowTab):
 		for p in products.load():
 			dev.addItem(f'{p.pn} ({p.version})', p)
 		for i in range(dev.count()):
-			dev.setItemIcon(i, icon('mdi7.memory', color='#888', scale_factor=1))
+			dev.setItemIcon(i, Icons.chip())
 		l.addWidget(dev)
 		self._product_cb = dev
 
@@ -145,7 +141,7 @@ class SwdTab(ConnectWindowTab):
 		self._workers.discard(self.sender())
 		self._probe_cb.clear()
 		for probe_uri in results:
-			self._probe_cb.addItem(icon('mdi7.bug-outline', color='#008', scale_factor=1), probe_uri, probe_uri)
+			self._probe_cb.addItem(Icons.probe(), probe_uri, probe_uri)
 		self._probe_status.setText('' if results else 'No debug probes found.')
 
 	@Slot(object, str)
@@ -169,7 +165,7 @@ class SwdTab(ConnectWindowTab):
 class UsbTab(ConnectWindowTab):
 
 	NAME = 'USB'
-	ICON = 'mdi7.usb-port'
+	ICON = Icons.usb
 	ENABLED = False
 
 
@@ -205,7 +201,7 @@ class _ProbeWorker(QObject):
 class SerialTab(ConnectWindowTab):
 
 	NAME = 'Serial'
-	ICON = 'mdi7.serial-port'
+	ICON = Icons.serialPort
 	ENABLED = True
 
 	#: The serial transport this tab discovers over.
@@ -245,14 +241,14 @@ class SerialTab(ConnectWindowTab):
 		header.setSectionResizeMode(self.BUTTON_COLUMN, QHeaderView.ResizeToContents)
 		l.addWidget(self._tree)
 
-		rescan = QPushButton(icon('mdi7.refresh', color='#888', scale_factor=1), 'Rescan serial ports')
+		rescan = QPushButton(Icons.refresh(), 'Rescan serial ports')
 		rescan.clicked.connect(self._rescanPorts)
 		l.addWidget(rescan, alignment=Qt.AlignLeft)
 
 	def _rescanPorts(self):
 		self._tree.clear()
 		for port_uri in self._connection.probe('%s://' % self.SCHEME):
-			self._addItem(None, port_uri, 'mdi7.serial-port', connectable=False)
+			self._addItem(None, port_uri, Icons.serialPort(), connectable=False)
 
 	@staticmethod
 	def _describe(uri):
@@ -266,13 +262,13 @@ class SerialTab(ConnectWindowTab):
 		name = '%s / %s' % (dst[0], dst[1]) if dst is not None else device
 		return name, parsed.get('p') or '', parsed.get('pv') or ''
 
-	def _addItem(self, parent, uri, icon_name, connectable):
+	def _addItem(self, parent, uri, item_icon, connectable):
 		"""Add one row for ``uri`` under ``parent`` (or at top level), with its own refresh button."""
 		name, protocol, version = self._describe(uri)
 		item = QTreeWidgetItem([name, protocol, version])
 		item.setData(0, self.URI_ROLE, uri)
 		item.setData(0, self.CONNECTABLE_ROLE, connectable)
-		item.setIcon(0, icon(icon_name, color='#448', scale_factor=1))
+		item.setIcon(0, item_icon)
 		item.setToolTip(0, uri)
 		if parent is None:
 			self._tree.addTopLevelItem(item)
@@ -282,7 +278,7 @@ class SerialTab(ConnectWindowTab):
 		btn = QToolButton()
 		btn.setAutoRaise(True)
 		btn.setToolTip('Probe this for services')
-		btn.setIcon(icon('mdi7.refresh', color='#888', scale_factor=1))
+		btn.setIcon(Icons.refresh())
 		btn.clicked.connect(lambda checked=False, it=item, u=uri: self._startProbe(it, u))
 		self._tree.setItemWidget(item, self.BUTTON_COLUMN, btn)
 		return item
@@ -291,7 +287,6 @@ class SerialTab(ConnectWindowTab):
 		btn = self._tree.itemWidget(item, self.BUTTON_COLUMN)
 		if btn is not None:
 			btn.setEnabled(False)
-			btn.setIcon(icon('mdi7.loading', color='#888', animation=spin(btn), scale_factor=1))
 
 		worker = _ProbeWorker(self._connection, uri, item)
 		worker.done.connect(self._onProbeDone)
@@ -305,7 +300,7 @@ class SerialTab(ConnectWindowTab):
 		try:
 			item.takeChildren()
 			for result_uri in results:
-				self._addItem(item, result_uri, 'mdi7.access-point', connectable=True)
+				self._addItem(item, result_uri, Icons.service(), connectable=True)
 			item.setExpanded(True)
 		except RuntimeError:
 			# The row was removed (e.g. the port list was rescanned) while the probe ran.
@@ -317,7 +312,7 @@ class SerialTab(ConnectWindowTab):
 		try:
 			item.takeChildren()
 			child = QTreeWidgetItem(['probe failed: %s' % message])
-			child.setIcon(0, icon('mdi7.alert-circle-outline', color='#800', scale_factor=1))
+			child.setIcon(0, Icons.error())
 			item.addChild(child)
 			item.setExpanded(True)
 		except RuntimeError:
@@ -330,7 +325,7 @@ class SerialTab(ConnectWindowTab):
 			btn = None
 		if btn is not None:
 			btn.setEnabled(True)
-			btn.setIcon(icon('mdi7.refresh', color='#888', scale_factor=1))
+			btn.setIcon(Icons.refresh())
 		self._workers.discard(self.sender())
 
 	def uri(self):
@@ -348,7 +343,7 @@ class BleTab(ConnectWindowTab):
 	"""
 
 	NAME = 'BLE'
-	ICON = 'mdi7.bluetooth'
+	ICON = Icons.bluetooth
 	ENABLED = True
 
 	#: The BLE transport this tab connects over.
@@ -383,7 +378,7 @@ class BleTab(ConnectWindowTab):
 		btn = QToolButton()
 		btn.setAutoRaise(True)
 		btn.setToolTip('Refresh the devices')
-		btn.setIcon(icon('mdi7.refresh', color='#888', scale_factor=1))
+		btn.setIcon(Icons.refresh())
 		btn.clicked.connect(self._refresh)
 		row.addWidget(btn, alignment=Qt.AlignTop)
 		self._refresh_btn = btn
@@ -422,7 +417,7 @@ class BleTab(ConnectWindowTab):
 		self._finishProbe()
 		self._devices.clear()
 		for uri in results:
-			item = QListWidgetItem(icon('mdi7.bluetooth', color='#008', scale_factor=1), self._describe(uri))
+			item = QListWidgetItem(Icons.bluetooth(), self._describe(uri))
 			item.setData(Qt.UserRole, uri)
 			self._devices.addItem(item)
 		self._devices.setCurrentRow(0)
@@ -451,7 +446,7 @@ class SshTab(ConnectWindowTab):
 	"""
 
 	NAME = 'SSH'
-	ICON = 'mdi7.console-network'
+	ICON = Icons.terminal
 	# Not on Android, which has no paramiko.
 	ENABLED = importlib.util.find_spec('paramiko') is not None
 
@@ -489,7 +484,7 @@ class SshTab(ConnectWindowTab):
 		btn = QToolButton()
 		btn.setAutoRaise(True)
 		btn.setToolTip('Refresh the devices')
-		btn.setIcon(icon('mdi7.refresh', color='#888', scale_factor=1))
+		btn.setIcon(Icons.refresh())
 		btn.clicked.connect(self._refresh)
 		row.addWidget(btn, alignment=Qt.AlignBottom)
 		self._refresh_btn = btn
@@ -524,7 +519,7 @@ class SshTab(ConnectWindowTab):
 		cb.blockSignals(True)
 		cb.clear()
 		for name, uri in sessions:
-			cb.addItem(icon('mdi7.server-network', color='#448', scale_factor=1), name, uri)
+			cb.addItem(Icons.server(), name, uri)
 			cb.setItemData(cb.count() - 1, uri, Qt.ToolTipRole)
 		cb.setPlaceholderText('Select a session' if sessions else 'No SSH sessions configured')
 		# None selected at first: listing the devices of a session connects to it and may ask for a password,
@@ -549,12 +544,10 @@ class SshTab(ConnectWindowTab):
 		if session is None:
 			# No session selected (any more), a probe still running is ignored when it finishes.
 			self._refresh_btn.setEnabled(True)
-			self._refresh_btn.setIcon(icon('mdi7.refresh', color='#888', scale_factor=1))
+			self._refresh_btn.setIcon(Icons.refresh())
 			self._status.setText('')
 			return
 		self._refresh_btn.setEnabled(False)
-		self._refresh_btn.setIcon(icon('mdi7.loading', color='#888', animation=spin(self._refresh_btn),
-		                               scale_factor=1))
 		self._status.setText('Connecting to %s...' % self._session_cb.currentText())
 		# The session goes along, the results of a session no longer selected are dropped.
 		worker = _ProbeWorker(self._connection, session, session)
@@ -570,7 +563,7 @@ class SshTab(ConnectWindowTab):
 		for uri in results:
 			item = QTreeWidgetItem([self._describe(uri), uri])
 			item.setData(0, Qt.UserRole, uri)
-			item.setIcon(0, icon('mdi7.access-point', color='#448', scale_factor=1))
+			item.setIcon(0, Icons.service())
 			item.setToolTip(1, uri)
 			self._devices.addTopLevelItem(item)
 		if results:
@@ -588,7 +581,7 @@ class SshTab(ConnectWindowTab):
 		if session != self._session_cb.currentData():
 			return False
 		self._refresh_btn.setEnabled(True)
-		self._refresh_btn.setIcon(icon('mdi7.refresh', color='#888', scale_factor=1))
+		self._refresh_btn.setIcon(Icons.refresh())
 		return True
 
 	def uri(self):
@@ -660,7 +653,7 @@ class ConnectWindow(AppletWindow):
 		self._exit_btn = DauiButton(self.tr('&Exit'), Icons.quit())
 		self._exit_btn.clicked.connect(self._exitClicked)
 
-		self._connect_btn = DauiButton(self.tr('&Connect'), icon('mdi7.link', color='#080', scale_factor=1))
+		self._connect_btn = DauiButton(self.tr('&Connect'), Icons.link())
 		self._connect_btn.clicked.connect(self._connectClicked)
 
 		self._tb = QToolBar()
@@ -761,18 +754,10 @@ class ConnectingWindow(AppletWindow):
 		# Whether the connection was made or failed, closing the window cancels it otherwise.
 		self._finished = False
 
-		spinner = QToolButton()
-		spinner.setAutoRaise(True)
-		spinner.setFocusPolicy(Qt.NoFocus)
-		spinner.setAttribute(Qt.WA_TransparentForMouseEvents)
-		spinner.setIconSize(QSize(32, 32))
-		spinner.setIcon(icon('mdi7.loading', color='#44c', animation=spin(spinner)))
-
 		label = QLabel(self.tr('Connecting to<br/><b>%s</b>...') % html.escape(describeUri(uri)))
 
 		row = QHBoxLayout()
 		row.setContentsMargins(9, 9, 9, 9)
-		row.addWidget(spinner)
 		row.addWidget(label, 1)
 
 		cancel = DauiButton(self.tr('&Cancel'), Icons.cancel())

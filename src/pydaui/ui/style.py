@@ -8,9 +8,9 @@
 from PySide6.QtCore import *
 from PySide6.QtWidgets import *
 from PySide6.QtGui import *
-from superqt.fonticon import icon
 
 from pydaui.ui.helpers import ANDROID
+from pydaui.ui.icons import Icons
 
 
 class DauiStyle(QProxyStyle):
@@ -49,15 +49,15 @@ class DauiStyle(QProxyStyle):
 	#: by touch.
 	ANDROID_SCROLL_BAR_EXTENT = 4
 
-	#: Title bar buttons and their icons
+	#: Title bar buttons and their glyphs, see :meth:`Icons.titleButton`
 	BUTTONS = {
-		QStyle.SC_TitleBarCloseButton: 'mdi7.window-close',
-		QStyle.SC_TitleBarMaxButton: 'mdi7.window-maximize',
-		QStyle.SC_TitleBarMinButton: 'mdi7.window-minimize',
-		QStyle.SC_TitleBarNormalButton: 'mdi7.window-restore',
-		QStyle.SC_TitleBarShadeButton: 'mdi7.chevron-up',
-		QStyle.SC_TitleBarUnshadeButton: 'mdi7.chevron-down',
-		QStyle.SC_TitleBarContextHelpButton: 'mdi7.help',
+		QStyle.SC_TitleBarCloseButton: 'close',
+		QStyle.SC_TitleBarMaxButton: 'maximize',
+		QStyle.SC_TitleBarMinButton: 'minimize',
+		QStyle.SC_TitleBarNormalButton: 'restore',
+		QStyle.SC_TitleBarShadeButton: 'shade',
+		QStyle.SC_TitleBarUnshadeButton: 'unshade',
+		QStyle.SC_TitleBarContextHelpButton: 'help',
 	}
 
 	def __init__(self):
@@ -66,7 +66,7 @@ class DauiStyle(QProxyStyle):
 
 	def _icon(self, name):
 		if name not in self._icons:
-			self._icons[name] = icon(name, color=self.TEXT_COLOR.name())
+			self._icons[name] = Icons.titleButton(name, self.TEXT_COLOR.name())
 		return self._icons[name]
 
 	@staticmethod

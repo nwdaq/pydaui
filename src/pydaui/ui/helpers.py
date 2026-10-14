@@ -11,11 +11,16 @@ from PySide6.QtCore import *
 from PySide6.QtWidgets import *
 from PySide6.QtGui import *
 from PySide6.QtSvg import QSvgRenderer
-from superqt.fonticon import icon, spin, pulse
 
 
 #: Whether running on Android, where the screen is small and touched.
 ANDROID = QSysInfo.productType() == 'android'
+
+
+def _icons():
+	"""The application icons, imported when used: they are built on :class:`SvgIcon` defined here."""
+	from pydaui.ui.icons import Icons
+	return Icons
 
 
 class Admonition(QFrame):
@@ -34,13 +39,13 @@ class Admonition(QFrame):
 			ad_icon = None
 			self.setProperty('class', ['admonition', 'admonition-none'])
 		elif ad_type == Admonition.NOTE:
-			ad_icon = icon('mdi7.information-outline', color='#008')
+			ad_icon = _icons().about()
 			self.setProperty('class', ['admonition', 'admonition-note'])
 		elif ad_type == Admonition.WARN:
-			ad_icon = icon('mdi7.alert-octagon-outline', color='#800')
+			ad_icon = _icons().warning()
 			self.setProperty('class', ['admonition', 'admonition-warn'])
 		else:
-			ad_icon = icon('mdi7.message-outline', color='#888')
+			ad_icon = _icons().message()
 			self.setProperty('class', 'admonition')
 
 		self.setStyleSheet('''
@@ -251,15 +256,14 @@ class DauiButton(QPushButton):
 	"""A push button with an icon and a text. Squeezed narrower than it prefers (e.g. on a small screen), it
 	shows the icon only, the text becomes its tool tip."""
 
-	def __init__(self, text=None, btn_icon=None, color='#000'):
+	def __init__(self, text=None, btn_icon=None):
 		super().__init__()
 		# The text shown when there is room for it, and the tool tip set.
 		self._text = ''
 		self._tool_tip = ''
 
-		if type(btn_icon) == str:
-			btn_icon = icon(f'mdi7.{btn_icon}', color=color, scale_factor=1)
-		self.setIcon(btn_icon)
+		if btn_icon is not None:
+			self.setIcon(btn_icon)
 
 		if text:
 			self.setText(text)

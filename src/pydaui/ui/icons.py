@@ -380,6 +380,210 @@ class Icons:
 		</svg>""")
 
 	@staticmethod
+	def warning():
+		"""A warning icon: a red octagon with an exclamation mark."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<path fill="{Icons.LIGHT_RED}" stroke="{Icons.DARK_RED}" stroke-width="1.1" stroke-linejoin="round"
+				d="M8.3 2.5 H15.7 L21.5 8.3 V15.7 L15.7 21.5 H8.3 L2.5 15.7 V8.3 Z"/>
+			<g fill="{Icons.DARK_RED}">
+				<rect x="10.8" y="6.5" width="2.4" height="7.5" rx="1"/>
+				<circle cx="12" cy="17" r="1.4"/>
+			</g>
+		</svg>""")
+
+	@staticmethod
+	def error():
+		"""An error icon: a red circle with an exclamation mark."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<circle cx="12" cy="12" r="9.5" fill="{Icons.LIGHT_RED}" stroke="{Icons.DARK_RED}" stroke-width="1.1"/>
+			<g fill="{Icons.DARK_RED}">
+				<rect x="10.8" y="6" width="2.4" height="8" rx="1"/>
+				<circle cx="12" cy="17.2" r="1.4"/>
+			</g>
+		</svg>""")
+
+	@staticmethod
+	def message():
+		"""A message icon: a white speech bubble with gray lines of text."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<path fill="{Icons.WHITE}" stroke="{Icons.DARK_GRAY}" stroke-width="1.1" stroke-linejoin="round"
+				d="M4 3.5 H20 Q21.5 3.5 21.5 5 V15 Q21.5 16.5 20 16.5 H10 L5.5 20.5 V16.5 H4 Q2.5 16.5 2.5 15 V5 Q2.5 3.5 4 3.5 Z"/>
+			<path d="M6.5 8 H17.5 M6.5 12 H14" stroke="{Icons.GRAY}" stroke-width="1.1" stroke-linecap="round"/>
+		</svg>""")
+
+	@staticmethod
+	def probe():
+		"""The debug probe icon: a blue bug with six legs and two feelers."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<path fill="none" stroke="{Icons.DARK_GRAY}" stroke-width="1.1" stroke-linecap="round"
+				d="M6.5 10 L3 8.5 M6 14 H2.5 M6.5 18 L3 19.5 M17.5 10 L21 8.5 M18 14 H21.5 M17.5 18 L21 19.5
+				   M10 5.5 L8 2.5 M14 5.5 L16 2.5"/>
+			<g stroke="{Icons.PRIMARY}" stroke-width="1.1" stroke-linejoin="round">
+				<path fill="{Icons.PRIMARY}" d="M8.5 8 Q8.5 4.8 12 4.8 Q15.5 4.8 15.5 8 Z"/>
+				<path fill="{Icons.PRIMARY_LIGHT}" d="M6.5 9.5 H17.5 V15 Q17.5 21.5 12 21.5 Q6.5 21.5 6.5 15 Z"/>
+				<path d="M12 9.5 V21.5"/>
+			</g>
+		</svg>""")
+
+	@staticmethod
+	def usb():
+		"""The USB icon: a blue plug with a gray metal connector and its two contacts at the top."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<g stroke-width="1.1" stroke-linejoin="round">
+				<rect x="7.5" y="2" width="9" height="8" fill="{Icons.LIGHT_GRAY}" stroke="{Icons.DARK_GRAY}"/>
+				<rect x="9.3" y="4.3" width="1.8" height="1.8" fill="{Icons.DARK_GRAY}" stroke="none"/>
+				<rect x="12.9" y="4.3" width="1.8" height="1.8" fill="{Icons.DARK_GRAY}" stroke="none"/>
+				<path fill="{Icons.PRIMARY_LIGHT}" stroke="{Icons.PRIMARY}" d="M6 10 H18 V17 Q18 18.5 16.5 18.5 H7.5 Q6 18.5 6 17 Z"/>
+				<path fill="{Icons.PRIMARY}" stroke="{Icons.PRIMARY}" d="M10 18.5 H14 V22 H10 Z"/>
+			</g>
+		</svg>""")
+
+	@staticmethod
+	def serialPort():
+		"""The serial port icon: a blue D-sub connector with two rows of pins."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<path fill="{Icons.PRIMARY_LIGHT}" stroke="{Icons.PRIMARY}" stroke-width="1.1" stroke-linejoin="round"
+				d="M2.5 7 Q2.5 6 3.6 6 H20.4 Q21.5 6 21.5 7 L19.2 17 Q19 18 18 18 H6 Q5 18 4.8 17 Z"/>
+			<g fill="{Icons.PRIMARY}">
+				<circle cx="6.4" cy="10" r="1.1"/>
+				<circle cx="9.2" cy="10" r="1.1"/>
+				<circle cx="12" cy="10" r="1.1"/>
+				<circle cx="14.8" cy="10" r="1.1"/>
+				<circle cx="17.6" cy="10" r="1.1"/>
+				<circle cx="7.8" cy="14" r="1.1"/>
+				<circle cx="10.6" cy="14" r="1.1"/>
+				<circle cx="13.4" cy="14" r="1.1"/>
+				<circle cx="16.2" cy="14" r="1.1"/>
+			</g>
+		</svg>""")
+
+	@staticmethod
+	def service():
+		"""The service icon: a blue dot radiating two arcs to each side, an access point."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<path fill="none" stroke="{Icons.PRIMARY}" stroke-width="1.6" stroke-linecap="round"
+				d="M8.5 8.5 A5 5 0 0 0 8.5 15.5 M15.5 8.5 A5 5 0 0 1 15.5 15.5
+				   M5.3 5.3 A9.5 9.5 0 0 0 5.3 18.7 M18.7 5.3 A9.5 9.5 0 0 1 18.7 18.7"/>
+			<circle cx="12" cy="12" r="2.4" fill="{Icons.PRIMARY_LIGHT}" stroke="{Icons.PRIMARY}" stroke-width="1.1"/>
+		</svg>""")
+
+	@staticmethod
+	def bluetooth():
+		"""The Bluetooth icon: the white rune on a blue rounded badge."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<path fill="{Icons.PRIMARY_LIGHT}" stroke="{Icons.PRIMARY}" stroke-width="1.1"
+				d="M12 1.5 Q19 1.5 19 12 Q19 22.5 12 22.5 Q5 22.5 5 12 Q5 1.5 12 1.5 Z"/>
+			<path fill="none" stroke="{Icons.PRIMARY}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
+				d="M8 8.2 L15.5 15.3 L12 18.6 V5.4 L15.5 8.7 L8 15.8"/>
+		</svg>""")
+
+	@staticmethod
+	def terminal():
+		"""The SSH icon: a terminal window with a prompt, connected to the network below it."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<path fill="none" stroke="{Icons.DARK_GRAY}" stroke-width="1.1" stroke-linecap="round"
+				d="M12 16.5 V20 M3 21 H21"/>
+			<circle cx="12" cy="21" r="1.5" fill="{Icons.WHITE}" stroke="{Icons.DARK_GRAY}" stroke-width="1.1"/>
+			<g stroke="{Icons.PRIMARY}" stroke-width="1.1" stroke-linejoin="round">
+				<rect x="2.5" y="2.5" width="19" height="14" rx="1.2" fill="{Icons.PRIMARY_LIGHT}"/>
+				<rect x="4" y="5.5" width="16" height="9.5" fill="{Icons.WHITE}"/>
+				<path d="M6 8 L8.5 10.2 L6 12.4 M10 12.4 H14" fill="none" stroke-linecap="round"/>
+			</g>
+		</svg>""")
+
+	@staticmethod
+	def server():
+		"""The server icon: two stacked blue server units with status LEDs, on the network."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<path fill="none" stroke="{Icons.DARK_GRAY}" stroke-width="1.1" stroke-linecap="round"
+				d="M12 17 V20 M3 21 H21"/>
+			<circle cx="12" cy="21" r="1.5" fill="{Icons.WHITE}" stroke="{Icons.DARK_GRAY}" stroke-width="1.1"/>
+			<g stroke="{Icons.PRIMARY}" stroke-width="1.1" stroke-linejoin="round" fill="{Icons.PRIMARY_LIGHT}">
+				<rect x="3.5" y="2.5" width="17" height="6.5" rx="1"/>
+				<rect x="3.5" y="10" width="17" height="6.5" rx="1"/>
+			</g>
+			<g fill="{Icons.PRIMARY}">
+				<rect x="6" y="5" width="6" height="1.5" rx="0.5"/>
+				<rect x="6" y="12.5" width="6" height="1.5" rx="0.5"/>
+			</g>
+			<circle cx="17" cy="5.75" r="1.1" fill="{Icons.RED}"/>
+			<circle cx="17" cy="13.25" r="1.1" fill="{Icons.PRIMARY}"/>
+		</svg>""")
+
+	@staticmethod
+	def link(active=True):
+		"""The connection icon: two chain links, blue when ``active``, gray otherwise."""
+		stroke, fill = (Icons.PRIMARY, Icons.PRIMARY_LIGHT) if active else (Icons.GRAY, Icons.LIGHT_GRAY)
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<g transform="rotate(-45 12 12)" stroke="{stroke}" stroke-width="1.1" fill="{fill}" fill-rule="evenodd">
+				<path d="M1.5 12 Q1.5 8 5.5 8 H10.5 Q14.5 8 14.5 12 Q14.5 16 10.5 16 H5.5 Q1.5 16 1.5 12 Z
+				         M5.5 10.3 Q3.8 10.3 3.8 12 Q3.8 13.7 5.5 13.7 H10.5 Q12.2 13.7 12.2 12 Q12.2 10.3 10.5 10.3 Z"/>
+				<path d="M9.5 12 Q9.5 8 13.5 8 H18.5 Q22.5 8 22.5 12 Q22.5 16 18.5 16 H13.5 Q9.5 16 9.5 12 Z
+				         M13.5 10.3 Q11.8 10.3 11.8 12 Q11.8 13.7 13.5 13.7 H18.5 Q20.2 13.7 20.2 12 Q20.2 10.3 18.5 10.3 Z"/>
+			</g>
+		</svg>""")
+
+	@staticmethod
+	def chip():
+		"""The memory icon: a gray chip with its pins on both sides and a blue die."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<g stroke="{Icons.DARK_GRAY}" stroke-width="1.1" stroke-linejoin="round" fill="{Icons.LIGHT_GRAY}">
+				<path d="M8 1.5 V4.5 M12 1.5 V4.5 M16 1.5 V4.5 M8 19.5 V22.5 M12 19.5 V22.5 M16 19.5 V22.5
+				         M1.5 8 H4.5 M1.5 12 H4.5 M1.5 16 H4.5 M19.5 8 H22.5 M19.5 12 H22.5 M19.5 16 H22.5"/>
+				<rect x="4.5" y="4.5" width="15" height="15" rx="1.5"/>
+			</g>
+			<rect x="8.5" y="8.5" width="7" height="7" rx="0.6" fill="{Icons.PRIMARY_LIGHT}" stroke="{Icons.PRIMARY}" stroke-width="1.1"/>
+		</svg>""")
+
+	@staticmethod
+	def clock():
+		"""The uptime icon: a white clock face with blue hands."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<circle cx="12" cy="12" r="9.5" fill="{Icons.WHITE}" stroke="{Icons.PRIMARY}" stroke-width="1.1"/>
+			<path d="M12 4.5 V5.8 M12 18.2 V19.5 M4.5 12 H5.8 M18.2 12 H19.5" stroke="{Icons.GRAY}" stroke-width="1.1" stroke-linecap="round"/>
+			<path d="M12 12 V7.5 M12 12 L15.5 14" fill="none" stroke="{Icons.PRIMARY}" stroke-width="1.6" stroke-linecap="round"/>
+			<circle cx="12" cy="12" r="1.2" fill="{Icons.PRIMARY}"/>
+		</svg>""")
+
+	@staticmethod
+	def menu():
+		"""The menu icon: three dark gray bars."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<path d="M4 6.5 H20 M4 12 H20 M4 17.5 H20" stroke="{Icons.DARK_GRAY}" stroke-width="2" stroke-linecap="round"/>
+		</svg>""")
+
+	@staticmethod
+	def folder():
+		"""The open folder icon: a blue folder with its front flap open and a white sheet in it."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<g stroke="{Icons.PRIMARY}" stroke-width="1.1" stroke-linejoin="round">
+				<path fill="{Icons.PRIMARY_LIGHT}" d="M2.5 5 Q2.5 4 3.5 4 H9 L11 6 H19 Q20 6 20 7 V19.5 H2.5 Z"/>
+				<rect x="5" y="8" width="13" height="8" fill="{Icons.WHITE}"/>
+				<path fill="{Icons.PRIMARY_LIGHT}" d="M2.5 19.5 L5.5 11 H22 L19 19.5 Z"/>
+			</g>
+		</svg>""")
+
+	#: The glyphs of the window title bar buttons, see :meth:`titleButton`.
+	TITLE_GLYPHS = {
+		'close': 'M6 6 L18 18 M18 6 L6 18',
+		'maximize': 'M5.5 5.5 H18.5 V18.5 H5.5 Z M5.5 8 H18.5',
+		'minimize': 'M6 17.5 H18',
+		'restore': 'M5.5 9.5 H14.5 V18.5 H5.5 Z M9.5 9.5 V5.5 H18.5 V14.5 H14.5',
+		'shade': 'M6 15 L12 9 L18 15',
+		'unshade': 'M6 9 L12 15 L18 9',
+		'help': 'M9 9 Q9 6 12 6 Q15 6 15 8.8 Q15 10.8 12 12 V14 M12 17.5 V18',
+	}
+
+	@staticmethod
+	def titleButton(name, color):
+		"""The glyph ``name`` of :data:`TITLE_GLYPHS` of a window title bar button, drawn as lines in
+		``color`` to match the title text."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<path d="{Icons.TITLE_GLYPHS[name]}" fill="none" stroke="{color}" stroke-width="1.8"
+				stroke-linecap="round" stroke-linejoin="round"/>
+		</svg>""")
+
+	@staticmethod
 	def expand():
 		"""The indicator of a collapsed tree branch: a plus sign in a small box."""
 		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 12">
