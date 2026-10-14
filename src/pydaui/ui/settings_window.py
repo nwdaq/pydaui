@@ -5,9 +5,15 @@
 # Copyright (c) 2026, Marek Koza (qyx@krtko.org)
 # All rights reserved.
 
+import os
+from urllib.parse import quote, unquote, urlencode
+
 from PySide6.QtCore import *
 from PySide6.QtWidgets import *
 from PySide6.QtGui import *
+from superqt.fonticon import icon
+
+from pynbus2.uri import parse_uri
 
 from pydaui.ui.helpers import ANDROID, AppletWindow, DauiButton, StyledTreeWidget, WrappedCheckBox, WrappedLabel
 from pydaui.ui.icons import Icons
@@ -178,6 +184,246 @@ class DeviceSection(SettingsSection):
 	@staticmethod
 	def sectionIcon():
 		return Icons.device()
+
+
+class SshSessionList(StyledTreeWidget):
+
+	COLUMN_RATIOS = (2, 5)
+
+	def __init__(self):
+		super().__init__()
+		self.setHeaderLabels([self.tr('Name'), self.tr('URI')])
+		self.setRootIsDecorated(False)
+
+
+class SshSessionsPage(SettingsPage):
+	"""The SSH sessions offered in the SSH tab of the connect window in a list, added and edited in a group
+	shown below it."""
+
+	NAME = 'SSH'
+
+	#: The SSH sessions, a list of ``{"name": ..., "uri": "ssh://[<user>@]<host>[:<port>][?identity=<key>]"}``.
+	SESSIONS = 'ssh.sessions'
+
+	DEFAULT_PORT = 22
+
+	def __init__(self, settings):
+		super().__init__(settings)
+
+		self._list = SshSessionList()
+		self._list.itemSelectionChanged.connect(self._updateButtons)
+		self._list.itemDoubleClicked.connect(lambda item, column: self._edit())
+
+		self._add = DauiButton(self.tr('Add'), Icons.add())
+		self._add.clicked.connect(self._startAdd)
+		self._edit_btn = DauiButton(self.tr('Edit'), Icons.edit())
+		self._edit_btn.clicked.connect(self._edit)
+		self._remove = DauiButton(self.tr('Remove'), Icons.remove())
+		self._remove.clicked.connect(self._removeSelected)
+		buttons = QHBoxLayout()
+		buttons.setContentsMargins(0, 0, 0, 0)
+		buttons.addWidget(self._add)
+		buttons.addWidget(self._edit_btn)
+		buttons.addWidget(self._remove)
+		buttons.addStretch(1)
+		button_row = QWidget()
+		button_row.setLayout(buttons)
+
+		self._group(self.tr('SSH sessions'),
+			WrappedLabel(self.tr('Devices attached to a DAQ controller are reached through the pynbus2 SSH proxy '
+			                     'running on it. Passwords are not saved, they are asked for when connecting.')),
+			self._list, button_row)
+		self._form_group = self._editGroup()
+
+		# The index of the session being edited, None when adding one.
+		self._editing = None
+		self._load()
+		self._closeEdit()
+
+	@classmethod
+	def sessions(cls, settings):
+		"""The SSH sessions in the ``settings``, the dictionaries with an URI."""
+		sessions = settings.get(cls.SESSIONS, [])
+		if not isinstance(sessions, list):
+			return []
+		return [s for s in sessions if isinstance(s, dict) and isinstance(s.get('uri'), str)]
+
+	def _editGroup(self):
+		"""The group adding or editing a session, hidden until Add or Edit is clicked."""
+		self._name = QLineEdit()
+		self._name.textChanged.connect(self._updateConfirm)
+		self._host = QLineEdit()
+		self._host.setPlaceholderText(self.tr('host name, address or ~/.ssh/config alias'))
+		self._host.textChanged.connect(self._updateConfirm)
+		self._user = QLineEdit()
+		self._user.setPlaceholderText(self.tr('from ~/.ssh/config or the local user'))
+		self._port = QSpinBox()
+		self._port.setRange(1, 65535)
+		self._key = QLineEdit()
+		self._key.setPlaceholderText(self.tr('the SSH agent and the keys in ~/.ssh'))
+		browse = QToolButton()
+		browse.setIcon(icon('mdi7.folder-open-outline', color='#888', scale_factor=1))
+		browse.setToolTip(self.tr('Select the private key file'))
+		browse.clicked.connect(self._browseKey)
+		key_row = QHBoxLayout()
+		key_row.setContentsMargins(0, 0, 0, 0)
+		key_row.addWidget(self._key, stretch=1)
+		key_row.addWidget(browse)
+		key = QWidget()
+		key.setLayout(key_row)
+
+		fields = QFormLayout()
+		fields.setContentsMargins(0, 0, 0, 0)
+		fields.setRowWrapPolicy(QFormLayout.WrapLongRows)
+		fields.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+		fields.addRow(WrappedLabel(self.tr('Name:')), self._name)
+		fields.addRow(WrappedLabel(self.tr('Host:')), self._host)
+		fields.addRow(WrappedLabel(self.tr('Port:')), self._port)
+		fields.addRow(WrappedLabel(self.tr('User:')), self._user)
+		fields.addRow(WrappedLabel(self.tr('Private key:')), key)
+		field_rows = QWidget()
+		field_rows.setLayout(fields)
+
+		self._confirm = DauiButton(self.tr('Add'), Icons.confirm())
+		self._confirm.setDefault(True)
+		self._confirm.clicked.connect(self._confirmEdit)
+		cancel = DauiButton(self.tr('Cancel'), Icons.cancel())
+		cancel.clicked.connect(self._closeEdit)
+		# Enter confirms and Escape cancels from the edit boxes.
+		for edit in (self._name, self._host, self._user, self._key):
+			edit.returnPressed.connect(self._confirm.click)
+		QShortcut(QKeySequence(Qt.Key_Escape), field_rows, cancel.click, context=Qt.WidgetWithChildrenShortcut)
+		buttons = QHBoxLayout()
+		buttons.setContentsMargins(0, 0, 0, 0)
+		buttons.addStretch(1)
+		buttons.addWidget(self._confirm)
+		buttons.addWidget(cancel)
+		button_row = QWidget()
+		button_row.setLayout(buttons)
+
+		return self._group('', field_rows, button_row)
+
+	def _uri(self):
+		"""The session URI of the edited fields."""
+		host = self._host.text().strip()
+		uri = 'ssh://%s%s' % (quote(self._user.text().strip(), safe='') + '@' if self._user.text().strip() else '',
+		                      '[%s]' % host if ':' in host else host)
+		if self._port.value() != self.DEFAULT_PORT:
+			uri += ':%d' % self._port.value()
+		if self._key.text().strip():
+			uri += '?' + urlencode({'identity': self._key.text().strip()})
+		return uri
+
+	def _load(self):
+		self._list.clear()
+		for session in self.sessions(self._settings):
+			# Decoded for reading, e.g. the path of the private key.
+			item = QTreeWidgetItem([session.get('name') or session['uri'], unquote(session['uri'])])
+			self._list.styleName(item)
+			self._list.addTopLevelItem(item)
+
+	@Slot()
+	def _startAdd(self):
+		self._openEdit(None, self.tr('Add SSH session'), self.tr('Add'), {})
+
+	@Slot()
+	def _edit(self):
+		index = self._list.indexOfTopLevelItem(self._list.currentItem())
+		if index < 0 or self._form_group.isVisible():
+			return
+		self._openEdit(index, self.tr('Edit SSH session'), self.tr('Confirm'), self.sessions(self._settings)[index])
+
+	def _openEdit(self, index, title, confirm, session):
+		self._editing = index
+		self._form_group.setTitle(title)
+		self._confirm.setText(confirm)
+		self._name.setText(session.get('name', ''))
+		host, port, user, key = '', self.DEFAULT_PORT, '', ''
+		if session.get('uri'):
+			try:
+				uri = parse_uri(session['uri'])
+				host, port, user, key = uri.host, uri.port or port, unquote(uri.username or ''), uri.get('identity', '')
+			except Exception:
+				host = session['uri']
+		self._host.setText(host)
+		self._port.setValue(port)
+		self._user.setText(user)
+		self._key.setText(key)
+		self._updateConfirm()
+		self._form_group.show()
+		self._name.setFocus()
+		self._updateButtons()
+
+	@Slot()
+	def _browseKey(self):
+		path, _ = QFileDialog.getOpenFileName(self, self.tr('Private key'),
+		                                      self._key.text() or os.path.expanduser('~/.ssh'))
+		if path:
+			self._key.setText(path)
+
+	@Slot()
+	def _confirmEdit(self):
+		if not self._confirm.isEnabled():
+			return
+		sessions = self.sessions(self._settings)
+		session = {'name': self._name.text().strip(), 'uri': self._uri()}
+		if self._editing is None:
+			sessions.append(session)
+		else:
+			sessions[self._editing] = dict(sessions[self._editing], **session)
+		row = len(sessions) - 1 if self._editing is None else self._editing
+		self._set(self.SESSIONS, sessions)
+		self._load()
+		self._list.setCurrentItem(self._list.topLevelItem(row))
+		self._closeEdit()
+
+	@Slot()
+	def _removeSelected(self):
+		index = self._list.indexOfTopLevelItem(self._list.currentItem())
+		if index < 0 or self._form_group.isVisible():
+			return
+		sessions = self.sessions(self._settings)
+		answer = QMessageBox.question(self, self.tr('Remove SSH session'),
+			self.tr('Remove the SSH session %s?') % (sessions[index].get('name') or sessions[index]['uri']))
+		if answer != QMessageBox.Yes:
+			return
+		del sessions[index]
+		self._set(self.SESSIONS, sessions)
+		self._load()
+		self._updateButtons()
+
+	@Slot()
+	def _closeEdit(self):
+		self._editing = None
+		self._form_group.hide()
+		self._updateButtons()
+
+	@Slot()
+	def _updateButtons(self):
+		editing = self._form_group.isVisibleTo(self)
+		self._add.setEnabled(not editing)
+		selected = self._list.currentItem() is not None
+		self._edit_btn.setEnabled(not editing and selected)
+		self._remove.setEnabled(not editing and selected)
+
+	@Slot()
+	def _updateConfirm(self):
+		self._confirm.setEnabled(bool(self._name.text().strip()) and bool(self._host.text().strip()))
+
+	@staticmethod
+	def sectionIcon():
+		return icon('mdi7.console-network', color=Icons.LIGHT_BLUE, scale_factor=1)
+
+
+class ConnectionSection(SettingsSection):
+	"""The ways of connecting the devices, a page for each one which has settings."""
+
+	NAME = 'Device connection'
+	PAGES = (SshSessionsPage,)
+
+	@staticmethod
+	def sectionIcon():
+		return Icons.connection()
 
 
 class RepositoryList(StyledTreeWidget):

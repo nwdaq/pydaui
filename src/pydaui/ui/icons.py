@@ -251,6 +251,20 @@ class Icons:
 		</svg>""")
 
 	@staticmethod
+	def connection():
+		"""The device connection icon: a computer and a device box with a cable between them."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<path fill="none" stroke="{Icons.DARK_GRAY}" stroke-width="1.6" stroke-linecap="round"
+				d="M8.5 9 H11 Q12.5 9 12.5 10.5 V13.5 Q12.5 15 14 15 H15.5"/>
+			<g stroke="{Icons.PRIMARY}" stroke-width="1.1" stroke-linejoin="round">
+				<rect x="1.5" y="4.5" width="7" height="9" rx="1" fill="{Icons.PRIMARY_LIGHT}"/>
+				<rect x="3" y="6" width="4" height="4" rx="0.4" fill="{Icons.WHITE}"/>
+				<rect x="15.5" y="11.5" width="7" height="7" rx="1" fill="{Icons.PRIMARY_LIGHT}"/>
+			</g>
+			<circle cx="19" cy="15" r="1.1" fill="{Icons.RED}"/>
+		</svg>""")
+
+	@staticmethod
 	def changelog():
 		"""The change log icon: a page with a folded corner and a bulleted list on it."""
 		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">

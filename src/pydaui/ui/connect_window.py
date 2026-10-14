@@ -22,6 +22,7 @@ from pydaui import bluetooth, products
 from pydaui.connection import *
 from pydaui.ui.helpers import Admonition, AppletWindow, DauiButton, WrappedLabel
 from pydaui.ui.icons import Icons
+from pydaui.ui.settings_window import SshSessionsPage
 
 
 def describeUri(uri):
@@ -445,18 +446,14 @@ class BleTab(ConnectWindowTab):
 class SshTab(ConnectWindowTab):
 	"""Connect to a device through the pynbus2-ssh-proxy of a DAQ controller over the ssh transport.
 
-	SSH hosts cannot be discovered, the sessions are predefined in the settings as a list of
-	``{"name": <label>, "uri": "ssh://[<user>@]<host>[:<port>][?identity=<key file>]"}`` under
-	:attr:`SESSIONS`. The devices are those the proxy probes on the controller.
+	SSH hosts cannot be discovered, the sessions are predefined in the settings, see :class:`SshSessionsPage`.
+	The devices are those the proxy probes on the controller.
 	"""
 
 	NAME = 'SSH'
 	ICON = 'mdi7.console-network'
 	# Not on Android, which has no paramiko.
 	ENABLED = importlib.util.find_spec('paramiko') is not None
-
-	#: Settings key of the predefined SSH sessions.
-	SESSIONS = 'ssh.sessions'
 
 	def __init__(self, connection, settings, parent=None):
 		super().__init__(connection, settings, parent=parent)
@@ -467,20 +464,16 @@ class SshTab(ConnectWindowTab):
 	@classmethod
 	def sessions(cls, settings):
 		"""The (name, uri) of the SSH sessions in the ``settings``."""
-		sessions = settings.get(cls.SESSIONS, [])
-		if not isinstance(sessions, list):
-			return []
-		return [(s.get('name') or s['uri'], s['uri']) for s in sessions
-		        if isinstance(s, dict) and isinstance(s.get('uri'), str)]
+		return [(s.get('name') or s['uri'], s['uri']) for s in SshSessionsPage.sessions(settings)]
 
 	def _createUi(self):
 		l = QVBoxLayout()
 		self.setLayout(l)
 		l.addWidget(WrappedLabel(
 			'Connect to a device attached to a DAQ controller, through the pynbus2 SSH proxy running on it. '
-			'The SSH sessions are configured in the settings file (%s). The keys of the SSH agent and '
+			'The SSH sessions are configured in Settings, Device connection. The keys of the SSH agent and '
 			'those in ~/.ssh are used, a password is asked for when needed.\n\n'
-			'Select the SSH session:' % self._settings.path
+			'Select the SSH session:'
 		))
 
 		cb = _ShrinkingComboBox()
@@ -521,7 +514,7 @@ class SshTab(ConnectWindowTab):
 		self._status = WrappedLabel()
 		l.addWidget(self._status)
 		if not cb.count():
-			self._status.setText('No SSH sessions configured, add them as "%s" to the settings file.' % self.SESSIONS)
+			self._status.setText('No SSH sessions configured, add them in Settings, Device connection.')
 
 	@staticmethod
 	def _describe(uri):
