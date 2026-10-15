@@ -62,7 +62,7 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     # Qt modules not used
-    excludes=['numpy', 'PIL', 'PySide6.QtOpenGL', 'PySide6.QtOpenGLWidgets',
+    excludes=['PIL', 'PySide6.QtOpenGL', 'PySide6.QtOpenGLWidgets',
         'PySide6.QtNetwork', 'PySide6.QtDataVisualization'],
     noarchive=False,
     optimize=0,

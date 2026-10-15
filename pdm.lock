@@ -5,7 +5,7 @@
 groups = ["default", "build"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:f2566cd09dbb0b455326c8dbb8903ce43093174d113a618b330c466cc38112d5"
+content_hash = "sha256:783614b067c6f572003f2102b7a179c68cd39f839a78d455345fbc2ef4d583f4"
 
 [[metadata.targets]]
 requires_python = ">=3.13,<3.14"
@@ -371,6 +371,27 @@ files = [
 ]
 
 [[package]]
+name = "numpy"
+version = "2.5.4"
+requires_python = ">=3.12"
+summary = "Fundamental package for array computing in Python"
+groups = ["default"]
+files = [
+    {file = "numpy-2.5.4-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:2377da2dd3ba2c1200956acbab2a358c83b8e1f8531191672d1cd6ad83250d53"},
+    {file = "numpy-2.5.4-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:7415db95818b39ec475a5eea54d9e3b6bc83e3912158e46da3438cdce399804d"},
+    {file = "numpy-2.5.4-cp313-cp313-macosx_14_0_arm64.whl", hash = "sha256:6d6a71b9d9a97c03633aa12565ef2825ffa036cc1d99cfd50dacf0f128af4fe2"},
+    {file = "numpy-2.5.4-cp313-cp313-macosx_14_0_x86_64.whl", hash = "sha256:d8200f16437b289a5bb927c6e184eccc3e8389bc0070fea4cd5b9e13c1757959"},
+    {file = "numpy-2.5.4-cp313-cp313-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:1c2e71b04c6cad90026e544501bbe0ab9290fa8a4d845e7e8c0d124fb429c988"},
+    {file = "numpy-2.5.4-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:6ffa07666f8da0eef81d149934a626d0d95fbd6838432a33e66245423a9062c0"},
+    {file = "numpy-2.5.4-cp313-cp313-musllinux_1_2_aarch64.whl", hash = "sha256:2fa3328f784fc8277fc48026f6cad516f5c561c5d8e2e39b3c9e0c8f23223b34"},
+    {file = "numpy-2.5.4-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:b86966fbe4ad7de710422175572bcdc75fdedadfb54bc6fab7deabccddd7780b"},
+    {file = "numpy-2.5.4-cp313-cp313-win32.whl", hash = "sha256:5258bc06526964be5face2fc6f756857a3f24f21ec3e72ca131337a75b165d6c"},
+    {file = "numpy-2.5.4-cp313-cp313-win_amd64.whl", hash = "sha256:8b4d2fd2d34e5f8c9235ee787de5631a37a28402b15cb80814df973d2be54129"},
+    {file = "numpy-2.5.4-cp313-cp313-win_arm64.whl", hash = "sha256:bc39ac66a7a9a3fbd6134fda43136b60ffde99c8f4501e64e0d2b24da137babf"},
+    {file = "numpy-2.5.4.tar.gz", hash = "sha256:9a94cf751c9ad8ebaa835bcd3d40dacf8534ad086b88c38029b65123c7999d2a"},
+]
+
+[[package]]
 name = "packaging"
 version = "26.3"
 requires_python = ">=3.9"
@@ -620,6 +641,20 @@ dependencies = [
 files = [
     {file = "pyocd-0.45.1-py3-none-any.whl", hash = "sha256:bf3f35d62620f8a0838cd1b2d8c6555308073165093684663c4c1921dae73b30"},
     {file = "pyocd-0.45.1.tar.gz", hash = "sha256:cef9ae095cde87cbd4005eff0a4bc0d3016dd22c7a5c61f425b69024cae1e0c1"},
+]
+
+[[package]]
+name = "pyqtgraph"
+version = "0.14.0"
+requires_python = ">=3.10"
+summary = "Scientific Graphics and GUI Library for Python"
+groups = ["default"]
+dependencies = [
+    "colorama",
+    "numpy>=1.25.0",
+]
+files = [
+    {file = "pyqtgraph-0.14.0-py3-none-any.whl", hash = "sha256:7abb7c3e17362add64f8711b474dffac5e7b0e9245abdf992e9a44119b7aa4f5"},
 ]
 
 [[package]]

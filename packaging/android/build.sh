@@ -25,9 +25,10 @@ STAGE=$ROOT/build/android
 WHEELS=$ROOT/build/android-wheels
 P4A=$ROOT/build/python-for-android
 
-# Pure Python dependencies installed by python-for-android, keep in sync with pdm.lock
+# Dependencies installed by python-for-android, numpy is built by its recipe, keep in sync with pdm.lock
 REQUIREMENTS=(
-	cbor2==5.6.4 colorama==0.4.6 humanize==4.11.0 pyelftools==0.33 pyserial==3.5 liblzma openssl
+	cbor2==5.6.4 colorama==0.4.6 humanize==4.11.0 numpy pyelftools==0.33 pyqtgraph==0.14.0 pyserial==3.5
+	liblzma openssl
 )
 
 rm -rf "$STAGE"
