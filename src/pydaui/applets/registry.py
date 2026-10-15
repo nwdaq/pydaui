@@ -26,7 +26,7 @@ from typing import Any, Callable, Optional
 
 from PySide6.QtGui import QIcon
 
-from pydaui.applets import conf, flash, update
+from pydaui.applets import calibration, conf, flash, update
 from pydaui.ui.icons import Icons
 
 # The module name is not a Python identifier.
@@ -86,6 +86,8 @@ PANELS = (
 #: The applets in the order they are offered within their panels.
 APPLETS = (
 	Applet(conf.PROTOCOL, 'Configuration tree', Icons.conf, 'Configuration', conf.ConfTreeWindow),
+	Applet(calibration.PROTOCOL, 'Calibration', Icons.certificate, 'Configuration', calibration.CalibrationWindow,
+	       settings=True),
 	Applet(flash.PROTOCOL, 'Flash', Icons.storage, 'Storage', flash.FlashWindow),
 	Applet(update.PROTOCOL, 'Update', Icons.update, 'System', update.UpdateWindow, probe=update.probe,
 	       settings=True),
