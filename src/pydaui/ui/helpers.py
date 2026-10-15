@@ -147,6 +147,25 @@ class SvgIcon(QIcon):
 
 
 
+class TabScrollArea(QScrollArea):
+	"""Scrolls a tab when the window is lower than the tab, e.g. on a small screen, instead of squeezing it.
+	Never horizontally, the tab wraps its texts to the width of the window.
+
+	A plain QScrollArea caps its size hint, this one asks for the whole tab so the window keeps its natural
+	size wherever it fits.
+	"""
+
+	def __init__(self, tab):
+		super().__init__()
+		self.setWidget(tab)
+		self.setWidgetResizable(True)
+		self.setFrameShape(QFrame.NoFrame)
+		self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+	def sizeHint(self):
+		return self.widget().sizeHint() + QSize(2 * self.frameWidth(), 2 * self.frameWidth())
+
+
 class WrappedLabel(QWidget):
 	"""Plain text wrapped to the width it gets, at the words, and anywhere in a word longer than a line
 	(e.g. a path). Unlike a word wrapped :class:`QLabel` it never needs to be wider than a few characters,

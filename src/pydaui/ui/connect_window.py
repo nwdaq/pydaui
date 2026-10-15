@@ -19,7 +19,7 @@ from pynbus2.uri import parse_uri, split_serial_path
 
 from pydaui import bluetooth, products
 from pydaui.connection import *
-from pydaui.ui.helpers import Admonition, AppletWindow, DauiButton, WrappedLabel
+from pydaui.ui.helpers import Admonition, AppletWindow, DauiButton, TabScrollArea, WrappedLabel
 from pydaui.ui.icons import Icons
 from pydaui.ui.settings_window import SshSessionsPage
 
@@ -589,25 +589,6 @@ class SshTab(ConnectWindowTab):
 		return item.data(0, Qt.UserRole) if item is not None else None
 
 
-class _TabScrollArea(QScrollArea):
-	"""Scrolls a connect window tab when the window is lower than the tab, e.g. on a small screen. Never
-	horizontally, the tab wraps its texts to the width of the window.
-
-	A plain QScrollArea caps its size hint, this one asks for the whole tab so the window keeps its natural
-	size wherever it fits.
-	"""
-
-	def __init__(self, tab):
-		super().__init__()
-		self.setWidget(tab)
-		self.setWidgetResizable(True)
-		self.setFrameShape(QFrame.NoFrame)
-		self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-
-	def sizeHint(self):
-		return self.widget().sizeHint() + QSize(2 * self.frameWidth(), 2 * self.frameWidth())
-
-
 class ConnectWindow(AppletWindow):
 	"""Selects the target connection, on top of the applets in the MDI area while the device is not connected."""
 
@@ -646,7 +627,7 @@ class ConnectWindow(AppletWindow):
 		# One tab per ConnectWindowTab subclass; each carries its own name, icon and enabled state.
 		for i, tab_cls in enumerate(ConnectWindowTab.__subclasses__()):
 			tab = tab_cls(self._connection, self._settings)
-			self._tabs.addTab(_TabScrollArea(tab), tab_cls.NAME)
+			self._tabs.addTab(TabScrollArea(tab), tab_cls.NAME)
 			self._tabs.setTabIcon(i, tab_cls.tabIcon())
 			self._tabs.setTabEnabled(i, tab_cls.ENABLED)
 
