@@ -257,6 +257,17 @@ class Icons:
 		</svg>""")
 
 	@staticmethod
+	def histogram():
+		"""The histogram icon: a translucent blue and a red step histogram overlapping over a gray axis."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<path fill="{Icons.PRIMARY_LIGHT}" fill-opacity="0.7" stroke="{Icons.PRIMARY}" stroke-width="1.1" stroke-linejoin="round"
+				d="M2.5 21.5 V17 H5.5 V10 H8.5 V5 H11.5 V11 H14.5 V18 H17.5 V21.5"/>
+			<path fill="{Icons.LIGHT_RED}" fill-opacity="0.6" stroke="{Icons.RED}" stroke-width="1.1" stroke-linejoin="round"
+				d="M7 21.5 V16 H10 V9 H13 V7 H16 V13 H19 V18 H21.5 V21.5"/>
+			<path fill="none" stroke="{Icons.DARK_GRAY}" stroke-width="1.1" stroke-linecap="round" d="M1.5 21.5 H22.5"/>
+		</svg>""")
+
+	@staticmethod
 	def liveData():
 		"""The live data icon: a blue topic tree, a root with three leaves, and a red dot of a value
 		arriving at the middle one."""

@@ -11,7 +11,8 @@ It talks to an interface speaking the ``mq`` protocol (plumCore services/nbus-mq
 :class:`pynbus2.mq.MqPollClient` off the GUI thread. Every topic is shown once in a tree split by its
 levels, its row is updated as new values arrive. The topic filter replaces the subscription of the remote
 message queue. The selected topics are shown in big letters in the Display tab, graphed over time in the
-Graph tab and their precision is assessed in the Statistics tab.
+Graph tab, their precision is assessed in the Statistics tab and their distributions are compared in the
+Histogram tab.
 
 The module name is not a Python identifier, import it with :func:`importlib.import_module`.
 """
@@ -1397,11 +1398,184 @@ class MqStatistics(QWidget):
 					self._items[key].setText(column, '–' if value is None else format(value))
 
 
+#: The most bins of a histogram.
+MAX_BINS = 200
+
+
+def histogram(v, q=None):
+	"""The probability density histogram of the finite values ``v``, the bin edges and the densities of the
+	bins. The densities do not depend on the number of the values nor on the width of the bins, the histograms
+	of different topics compare.
+
+	The width of the bins is by the Freedman-Diaconis rule, 2 IQR/N^(1/3), robust to outliers (by Scott's rule
+	if the interquartile range is 0), at most :data:`MAX_BINS` bins. The bins of values quantized to the
+	resolution ``q`` are a multiple of it wide and centred on the levels. Else some bins would get more levels
+	than the others and the histogram would look like a comb.
+	"""
+	n = len(v)
+	lo, hi = float(v.min()), float(v.max())
+	q25, q75 = np.percentile(v, (25, 75))
+	spread = 2 * float(q75 - q25) if q75 > q25 else 3.49 * float(v.std())
+	width = max(spread / n ** (1 / 3), (hi - lo) / MAX_BINS)
+	if q:
+		width = max(1, math.ceil(width / q - 1e-9)) * q
+		lo -= q / 2
+	elif width <= 0:
+		# All the values are the same.
+		width = 1.0
+		lo -= width / 2
+	bins = int((hi - lo) // width) + 1
+	edges = lo + width * np.arange(bins + 1)
+	counts, _ = np.histogram(v, edges)
+	return edges, counts / (n * width)
+
+
+class MqHistogram(QWidget):
+	"""The Histogram tab, the distribution of the values of every graphed topic over the time shown in the Graph
+	tab, all in one graph to compare them. The bars are translucent in the colour of the line of the topic, the
+	dashed lines mark one and the dotted ones two standard deviations from the mean.
+
+	Relative, the histograms show the deviations from the mean, the topics around different values overlap. The
+	mean rather than the median, the standard deviations are around the mean too and they stay symmetric about
+	zero.
+	"""
+
+	#: How often the histograms are computed while they are shown, in milliseconds.
+	REFRESH_MS = 500
+
+	BORDER_COLOR = '#d6d6d6'
+	BAR_TEXT_COLOR = '#555'
+
+	#: The opacity of the bars, they overlap.
+	FILL_ALPHA = 60
+
+	def __init__(self, graph):
+		super().__init__()
+		self._graph = graph
+		self._topics = {}
+		# The bars and the standard deviation lines (-2, -1, +1, +2) of the topics by the name.
+		self._bars = {}
+		self._sigmas = {}
+
+		bar = QWidget()
+		bar.setObjectName('bar')
+		bar.setAttribute(Qt.WA_StyledBackground)
+		row = QHBoxLayout(bar)
+		row.setContentsMargins(8, 4, 8, 4)
+		row.setSpacing(4)
+		self._relative = QCheckBox(self.tr('Relative'))
+		self._relative.setToolTip(self.tr('Show the deviations from the mean, the topics around different values '
+		                                  'overlap'))
+		self._relative.toggled.connect(self._relativeChanged)
+		row.addWidget(self._relative)
+		row.addStretch()
+		self._window = QLabel()
+		self._window.setToolTip(self.tr('The histograms cover the time shown in the Graph tab, set its time span '
+		                                'there'))
+		row.addWidget(self._window)
+
+		self._plot = _Plot()
+		self._plot.setAxisLabel('left', self.tr('Probability density'))
+		self._relativeChanged(False)
+		self._plot.getPlotItem().getViewBox().enableAutoRange()
+
+		# Shown while there are no topics.
+		self._hint = QLabel(self.tr('Select topics in the Topics tab to show their histograms here.'))
+		self._hint.setAlignment(Qt.AlignCenter)
+		self._hint.setStyleSheet('color: #888;')
+		self._stack = QStackedWidget()
+		self._stack.addWidget(self._hint)
+		self._stack.addWidget(self._plot)
+
+		self.setStyleSheet(f"""
+			QWidget#bar {{ border-bottom: 1px solid {self.BORDER_COLOR}; }}
+			QWidget#bar QLabel, QWidget#bar QCheckBox {{ color: {self.BAR_TEXT_COLOR}; }}
+		""")
+		layout = QVBoxLayout(self)
+		layout.setContentsMargins(0, 0, 0, 0)
+		layout.setSpacing(0)
+		layout.addWidget(bar)
+		layout.addWidget(self._stack, stretch=1)
+
+		self._timer = QTimer(self)
+		self._timer.setInterval(self.REFRESH_MS)
+		self._timer.timeout.connect(self._refresh)
+		self._timer.start()
+
+	def _setTopics(self, topics):
+		"""Histograms of the topics of ``topics``, the colours by the names."""
+		for name in self._bars:
+			self._plot.removeItem(self._bars[name])
+			for line in self._sigmas[name]:
+				self._plot.removeItem(line)
+		self._topics = topics
+		self._bars = {}
+		self._sigmas = {}
+		for name, color in topics.items():
+			fill = QColor(color)
+			fill.setAlpha(self.FILL_ALPHA)
+			bars = pg.PlotDataItem(name=name, stepMode='center', fillLevel=0, brush=fill,
+			                       pen=pg.mkPen(color, width=_Plot.LINE_WIDTH), antialias=True)
+			self._plot.addLine(bars)
+			self._bars[name] = bars
+			lines = []
+			for k in (-2, -1, 1, 2):
+				style = Qt.DashLine if abs(k) == 1 else Qt.DotLine
+				line = pg.InfiniteLine(angle=90, pen=pg.mkPen(color, width=_Plot.LINE_WIDTH, style=style))
+				line.setToolTip(f'{name}: {k:+d}σ')
+				self._plot.addItem(line)
+				lines.append(line)
+			self._sigmas[name] = lines
+		self._stack.setCurrentWidget(self._plot if topics else self._hint)
+
+	@Slot(bool)
+	def _relativeChanged(self, relative):
+		self._plot.setAxisLabel('bottom', self.tr('Deviation from the mean') if relative else self.tr('Value'))
+		self._refresh()
+
+	def showEvent(self, event):
+		super().showEvent(event)
+		self._refresh()
+
+	@Slot()
+	def _refresh(self):
+		if not self.isVisible():
+			return
+		topics = self._graph.topics
+		if topics != self._topics:
+			self._setTopics(topics)
+		start, end = self._graph.timeRange()
+		self._window.setText(self.tr('Over the time shown in the Graph tab, %.1f s to %.1f s') % (start, end))
+		relative = self._relative.isChecked()
+		for name in topics:
+			t, v = self._graph.window(name)
+			metrics = precision(t, v)
+			v = v[np.isfinite(v)]
+			bars = self._bars[name]
+			lines = self._sigmas[name]
+			if not len(v):
+				bars.hide()
+				for line in lines:
+					line.hide()
+				continue
+			mean = metrics['mean']
+			if relative:
+				v = v - mean
+				mean = 0.0
+			edges, density = histogram(v, metrics.get('q'))
+			bars.setData(edges, density)
+			bars.show()
+			s = metrics.get('s')
+			for k, line in zip((-2, -1, 1, 2), lines):
+				line.setVisible(bool(s))
+				if s:
+					line.setValue(mean + k * s)
+
 
 class MqLiveData(QWidget):
 	"""The live data with its toolbars: Pause, Clear and the poll rate on the left and the topic filter on the
 	right at the top, the polling status and the message statistics at the bottom. In between, the tabs of the
-	topic tree and of the display, the graph and the statistics of the selected topics."""
+	topic tree and of the display, the graph, the statistics and the histograms of the selected topics."""
 
 	#: The colour of the status, and of an invalid filter.
 	STATUS_COLOR = '#888'
@@ -1414,6 +1588,7 @@ class MqLiveData(QWidget):
 		self._display = MqDisplayArea(self._tree)
 		self._graph = MqGraph()
 		self._statistics = MqStatistics(self._graph)
+		self._histogram = MqHistogram(self._graph)
 		self._tree.selectionChanged.connect(self._selectionChanged)
 		self._display.panelClosed.connect(lambda name: self._tree.setSelected(name, False))
 		# The filter the poller sends, and the totals shown in the status.
@@ -1491,6 +1666,7 @@ class MqLiveData(QWidget):
 		self._tabs.addTab(self._display, Icons.data(), self.tr('Display'))
 		self._tabs.addTab(self._graph, Icons.graph(), self.tr('Graph'))
 		self._tabs.addTab(self._statistics, Icons.statistics(), self.tr('Statistics'))
+		self._tabs.addTab(self._histogram, Icons.histogram(), self.tr('Histogram'))
 		self._layout.addWidget(self._tabs)
 		self._layout.addWidget(self._bottom)
 		self.setLayout(self._layout)
