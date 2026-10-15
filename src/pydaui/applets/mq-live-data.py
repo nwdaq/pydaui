@@ -10,17 +10,21 @@
 It talks to an interface speaking the ``mq`` protocol (plumCore services/nbus-mq-poll), polling it with the
 :class:`pynbus2.mq.MqPollClient` off the GUI thread. Every topic is shown once in a tree split by its
 levels, its row is updated as new values arrive. The topic filter replaces the subscription of the remote
-message queue.
+message queue. The selected topics are shown in big letters in the Display tab and graphed over time in the
+Graph tab.
 
 The module name is not a Python identifier, import it with :func:`importlib.import_module`.
 """
 
 import collections
 import logging
+import math
 import threading
 import time
 
 import cbor2
+import numpy as np
+import pyqtgraph as pg
 from pynbus2.mq import MqPollClient, topic_matches
 from PySide6.QtCore import *
 from PySide6.QtWidgets import *
@@ -165,6 +169,36 @@ def format_number(value, decimals, style, zero_pad, integral_width=0):
 	else:
 		number = sign + integral
 	return number + fraction, width
+
+
+#: The time spans the graph shows as (label, seconds), and the index of the default one.
+GRAPH_SPANS = (
+	('10 s', 10),
+	('30 s', 30),
+	('1 min', 60),
+	('5 min', 300),
+	('10 min', 600),
+	('30 min', 1800),
+	('60 min', 3600),
+)
+DEFAULT_GRAPH_SPAN = 2
+
+#: The colours of the graph lines from the Tango palette, taken in turn: the middle shades of the hues first
+#: (the darker ones of the butter and chameleon, the middle ones are too light on white), then the dark and
+#: the light shades.
+GRAPH_COLORS = (
+	'#3465a4', '#cc0000', '#4e9a06', '#f57900', '#75507b', '#c17d11', '#c4a000', '#555753',
+	'#204a87', '#a40000', '#ce5c00', '#5c3566', '#8f5902', '#2e3436',
+	'#729fcf', '#ef2929', '#73d216', '#fcaf3e', '#ad7fa8', '#e9b96e', '#888a85',
+)
+
+
+def graph_value(value):
+	"""A received ``value`` as the float graphed, ``None`` for a value which is not a number. A bool is
+	graphed as 0 or 1."""
+	if isinstance(value, (bool, int, float)):
+		return float(value)
+	return None
 
 
 class _Topic:
@@ -710,10 +744,325 @@ class MqDisplayArea(QMainWindow):
 			panel.setStale(topic is None or topic.stale(now))
 
 
+class _Clock:
+	"""Maps the timestamps a device publishes the values with to the host :func:`time.monotonic`, so the
+	values polled together are graphed when they were published rather than when they arrived.
+
+	The offset of the clocks is the smallest seen, the one of the value polled the soonest after it was
+	published. It is found again if the device clock goes back, e.g. when the device restarts. Values without
+	a timestamp are graphed when they arrived.
+	"""
+
+	def __init__(self):
+		self._offset = None
+		self._last = None
+
+	def observe(self, ts, now):
+		"""Take the timestamp ``ts`` of a value arriving ``now`` into account. Observe all the values polled
+		together before mapping them, the oldest ones of a backlog would be mapped to now otherwise."""
+		if not ts:
+			return
+		if self._last is not None and ts < self._last:
+			self._offset = None
+		self._last = ts
+		offset = now - ts
+		if self._offset is None or offset < self._offset:
+			self._offset = offset
+
+	def time(self, ts, now):
+		if not ts or self._offset is None:
+			return now
+		return ts + self._offset
+
+
+class _Series:
+	"""The graphed history of one topic, the times and the values in arrays grown as needed. The times never
+	go back, the graph relies on them being sorted. A gap is a NaN value, the line is not drawn across it."""
+
+	INITIAL_SIZE = 1024
+
+	def __init__(self):
+		self._x = np.empty(self.INITIAL_SIZE)
+		self._y = np.empty(self.INITIAL_SIZE)
+		self._n = 0
+		#: Whether there are values not graphed yet.
+		self.dirty = False
+
+	def append(self, x, y):
+		if self._n == len(self._x):
+			self._x = np.resize(self._x, 2 * self._n)
+			self._y = np.resize(self._y, 2 * self._n)
+		if self._n:
+			x = max(x, self._x[self._n - 1])
+		self._x[self._n] = x
+		self._y[self._n] = y
+		self._n += 1
+		self.dirty = True
+
+	def gap(self):
+		"""Break the line after the last value."""
+		if self._n and not math.isnan(self._y[self._n - 1]):
+			self.append(self._x[self._n - 1], math.nan)
+
+	@property
+	def x(self):
+		return self._x[:self._n]
+
+	@property
+	def y(self):
+		return self._y[:self._n]
+
+
+class _TimeAxis(pg.AxisItem):
+	"""The time axis in seconds with minor ticks every 10 s and major ones every minute, finer ones for the
+	short spans. The minor ticks are left out when they would be too dense to tell apart, the labels are
+	thinned out to fit."""
+
+	MINOR_S = 10
+	MAJOR_S = 60
+
+	#: The steps of the labels, the shortest the labels fit with is used.
+	LABEL_STEPS = (1, 5, 10, 60, 120, 300, 600, 900, 1800, 3600)
+
+	#: The space between two labels, in characters.
+	LABEL_GAP = 3
+
+	#: The least space between two minor ticks, in pixels.
+	MIN_TICK_SPACING = 5
+
+	def __init__(self):
+		super().__init__('bottom')
+		self._label_step = self.MAJOR_S
+
+	def tickSpacing(self, minVal, maxVal, size):
+		span = maxVal - minVal
+		per_s = size / span if span > 0 else 0
+		levels = [(self.MAJOR_S, 0)]
+		if self.MINOR_S * per_s >= self.MIN_TICK_SPACING:
+			levels.append((self.MINOR_S, 0))
+		if span <= 10:
+			levels.append((1, 0))
+		elif span <= 30:
+			levels.append((5, 0))
+		finest = levels[-1][0]
+
+		metrics = QFontMetrics(self.style['tickFont'] or self.font())
+		widest = max(len(f'{minVal:.0f}'), len(f'{maxVal:.0f}')) + self.LABEL_GAP
+		width = widest * metrics.horizontalAdvance('0')
+		self._label_step = next((step for step in self.LABEL_STEPS if step >= finest and step * per_s >= width),
+		                        self.LABEL_STEPS[-1])
+		return levels
+
+	def tickStrings(self, values, scale, spacing):
+		return [f'{v:.0f}' if round(v) % self._label_step == 0 else '' for v in values]
+
+
+class MqGraph(QWidget):
+	"""The Graph tab, a line of every selected topic over time. The time is in seconds since the graph was
+	started or cleared. Its top panel sets the time span shown and whether the graph follows the newest values,
+	the span ending now. Not following, the graph shows the span the current time falls into, moving on by the
+	whole span when the time reaches its end.
+
+	The values of the selected topics are kept until cleared, also of the topics deselected meanwhile, their
+	line has a gap while they were not selected. The lines are downsampled to the pixels and clipped to the
+	time shown, a long history does not slow the graph down."""
+
+	#: How often the graph is redrawn while it is shown, in milliseconds: when the time moves on by a pixel,
+	#: but not more often than the shortest nor less often than the longest interval.
+	MIN_REFRESH_MS = 50
+	MAX_REFRESH_MS = 1000
+
+	#: Colours of the line under the top panel, of the axes, of their text and of the text of the top panel.
+	BORDER_COLOR = '#d6d6d6'
+	AXIS_COLOR = '#888'
+	TEXT_COLOR = '#333'
+	BAR_TEXT_COLOR = '#555'
+
+	#: The width of the lines, in pixels.
+	LINE_WIDTH = 1.5
+
+	def __init__(self):
+		super().__init__()
+		self._t0 = time.monotonic()
+		# The series by the topic, of all the topics selected since cleared; the lines and their colours of the
+		# selected ones.
+		self._series = {}
+		self._curves = {}
+		self._colors = {}
+		# The clocks of the devices publishing the values by the device name.
+		self._clocks = {}
+
+		font = QFontDatabase.systemFont(QFontDatabase.FixedFont)
+		font.setPointSizeF(QApplication.font().pointSizeF())
+		self._font = font
+
+		bar = QWidget()
+		bar.setObjectName('bar')
+		bar.setAttribute(Qt.WA_StyledBackground)
+		row = QHBoxLayout(bar)
+		row.setContentsMargins(8, 4, 8, 4)
+		row.setSpacing(4)
+		label = QLabel(self.tr('Time span:'))
+		label.setContentsMargins(0, 0, 4, 0)
+		row.addWidget(label)
+		self._span = QComboBox()
+		for text, _span in GRAPH_SPANS:
+			self._span.addItem(text)
+		self._span.setCurrentIndex(DEFAULT_GRAPH_SPAN)
+		self._span.setToolTip(self.tr('The time shown in the graph'))
+		self._span.currentIndexChanged.connect(self._refresh)
+		row.addWidget(self._span)
+		row.addSpacing(8)
+		self._follow = QCheckBox(self.tr('Auto follow'))
+		self._follow.setChecked(True)
+		self._follow.setToolTip(self.tr('Keep the newest values on the right, else the graph moves on by the '
+		                                'whole span'))
+		self._follow.toggled.connect(self._refresh)
+		row.addWidget(self._follow)
+		row.addStretch()
+
+		self._plot = pg.PlotWidget(background='w', axisItems={'bottom': _TimeAxis()})
+		item = self._plot.getPlotItem()
+		item.setMenuEnabled(False)
+		item.hideButtons()
+		# Only the time shown is drawn, reduced to the minimum and the maximum of every pixel. Set for the
+		# lines as they are added.
+		item.setClipToView(True)
+		item.setDownsampling(auto=True, mode='peak')
+		item.showGrid(x=True, y=True, alpha=0.3)
+		for name in ('bottom', 'left'):
+			axis = item.getAxis(name)
+			axis.setPen(pg.mkPen(self.AXIS_COLOR))
+			axis.setTextPen(pg.mkPen(self.TEXT_COLOR))
+			axis.setTickFont(font)
+			axis.label.setFont(font)
+		bottom = item.getAxis('bottom')
+		# The time labels are thinned out to fit by the axis, all of them are shown.
+		bottom.setStyle(textFillLimits=[(0, 0.95)])
+		bottom.enableAutoSIPrefix(False)
+		item.setLabel('bottom', self.tr('Time (s)'), color=self.TEXT_COLOR)
+		self._legend = item.addLegend(offset=(10, 10), brush=pg.mkBrush(255, 255, 255, 220),
+		                              pen=pg.mkPen(self.BORDER_COLOR), labelTextColor=self.TEXT_COLOR,
+		                              labelTextSize=f'{font.pointSizeF():g}pt')
+		# The time is set by the span and the values fill the height of the time shown.
+		view = item.getViewBox()
+		view.setMouseEnabled(x=False, y=False)
+		view.disableAutoRange(pg.ViewBox.XAxis)
+		view.enableAutoRange(pg.ViewBox.YAxis)
+		view.setAutoVisible(y=True)
+
+		# Shown while there are no lines.
+		self._hint = QLabel(self.tr('Select topics in the Topics tab to graph their values here.'))
+		self._hint.setAlignment(Qt.AlignCenter)
+		self._hint.setStyleSheet('color: #888;')
+		self._stack = QStackedWidget()
+		self._stack.addWidget(self._hint)
+		self._stack.addWidget(self._plot)
+
+		self.setStyleSheet(f"""
+			QWidget#bar {{ border-bottom: 1px solid {self.BORDER_COLOR}; }}
+			QWidget#bar QLabel, QWidget#bar QCheckBox, QWidget#bar QComboBox {{ color: {self.BAR_TEXT_COLOR}; }}
+		""")
+		layout = QVBoxLayout(self)
+		layout.setContentsMargins(0, 0, 0, 0)
+		layout.setSpacing(0)
+		layout.addWidget(bar)
+		layout.addWidget(self._stack, stretch=1)
+
+		self._timer = QTimer(self)
+		self._timer.setInterval(self.MIN_REFRESH_MS)
+		self._timer.timeout.connect(self._refresh)
+		self._timer.start()
+		self._refresh()
+
+	def add(self, name):
+		if name in self._curves:
+			return
+		series = self._series.get(name)
+		if series is None:
+			series = self._series[name] = _Series()
+		else:
+			# Not graphed while it was not selected.
+			series.gap()
+		used = set(self._colors.values())
+		color = next((c for c in GRAPH_COLORS if c not in used), GRAPH_COLORS[len(self._colors) % len(GRAPH_COLORS)])
+		self._colors[name] = color
+		# The peaks of every half a pixel rather than of a fraction of it keep the lines of a long time span quick
+		# to draw.
+		curve = pg.PlotDataItem(name=name, pen=pg.mkPen(color, width=self.LINE_WIDTH), antialias=True,
+		                        connect='finite', autoDownsampleFactor=2.0)
+		curve.setData(series.x, series.y)
+		series.dirty = False
+		self._plot.addItem(curve)
+		label = self._legend.getLabel(curve)
+		if label is not None:
+			label.item.setFont(self._font)
+			label.setText(name)
+		self._curves[name] = curve
+		self._stack.setCurrentWidget(self._plot)
+		self._refresh()
+
+	def remove(self, name):
+		curve = self._curves.pop(name, None)
+		if curve is None:
+			return
+		del self._colors[name]
+		self._plot.removeItem(curve)
+		if not self._curves:
+			self._stack.setCurrentWidget(self._hint)
+
+	def addValues(self, values):
+		now = time.monotonic()
+		values = [v for v in values if v.topic in self._curves]
+		for v in values:
+			clock = self._clocks.get(v.host)
+			if clock is None:
+				clock = self._clocks[v.host] = _Clock()
+			clock.observe(v.ts, now)
+		for v in values:
+			y = graph_value(v.value)
+			if y is not None:
+				self._series[v.topic].append(self._clocks[v.host].time(v.ts, now) - self._t0, y)
+
+	def clear(self):
+		"""Forget the history of all the topics and start the time again."""
+		self._t0 = time.monotonic()
+		self._clocks = {}
+		self._series = {name: _Series() for name in self._curves}
+		for name, curve in self._curves.items():
+			curve.setData(self._series[name].x, self._series[name].y)
+		self._refresh()
+
+	def showEvent(self, event):
+		super().showEvent(event)
+		self._refresh()
+
+	@Slot()
+	def _refresh(self):
+		"""Graph the new values and move the time shown on. Only while the graph is shown."""
+		if not self._plot.isVisible():
+			return
+		for name, curve in self._curves.items():
+			series = self._series[name]
+			if series.dirty:
+				curve.setData(series.x, series.y)
+				series.dirty = False
+
+		span = GRAPH_SPANS[self._span.currentIndex()][1]
+		t = time.monotonic() - self._t0
+		if self._follow.isChecked():
+			start = t - span
+		else:
+			start = math.floor(t / span) * span
+		self._plot.setXRange(start, start + span, padding=0)
+		ms = 1000 * span / max(1, self._plot.getPlotItem().getViewBox().width())
+		self._timer.setInterval(int(min(self.MAX_REFRESH_MS, max(self.MIN_REFRESH_MS, ms))))
+
+
 class MqLiveData(QWidget):
 	"""The live data with its toolbars: Pause, Clear and the poll rate on the left and the topic filter on the
 	right at the top, the polling status and the message statistics at the bottom. In between, the tabs of the
-	topic tree and of the display of the selected topics."""
+	topic tree, of the display and of the graph of the selected topics."""
 
 	#: The colour of the status, and of an invalid filter.
 	STATUS_COLOR = '#888'
@@ -724,6 +1073,7 @@ class MqLiveData(QWidget):
 		self._logger = logging.getLogger(self.__class__.__name__)
 		self._tree = MqLiveDataTreeWidget()
 		self._display = MqDisplayArea(self._tree)
+		self._graph = MqGraph()
 		self._tree.selectionChanged.connect(self._selectionChanged)
 		self._display.panelClosed.connect(lambda name: self._tree.setSelected(name, False))
 		# The filter the poller sends, and the totals shown in the status.
@@ -739,7 +1089,7 @@ class MqLiveData(QWidget):
 		self._pause.clicked.connect(self._togglePause)
 		self._tb.addWidget(self._pause)
 		clear = DauiButton(self.tr('Clear'), Icons.clear())
-		clear.setToolTip(self.tr('Remove all the topics shown'))
+		clear.setToolTip(self.tr('Remove all the topics shown and the history of the graph'))
 		clear.clicked.connect(self._clear)
 		self._tb.addWidget(clear)
 
@@ -799,6 +1149,7 @@ class MqLiveData(QWidget):
 		self._tabs.setDocumentMode(True)
 		self._tabs.addTab(self._tree, Icons.liveData(), self.tr('Topics'))
 		self._tabs.addTab(self._display, Icons.data(), self.tr('Display'))
+		self._tabs.addTab(self._graph, Icons.graph(), self.tr('Graph'))
 		self._layout.addWidget(self._tabs)
 		self._layout.addWidget(self._bottom)
 		self.setLayout(self._layout)
@@ -821,14 +1172,17 @@ class MqLiveData(QWidget):
 		self._missed += missed
 		self._tree.addValues(values)
 		self._display.addValues(values)
+		self._graph.addValues(values)
 		self._updateStatus()
 
 	@Slot(str, bool)
 	def _selectionChanged(self, name, selected):
 		if selected:
 			self._display.add(name)
+			self._graph.add(name)
 		else:
 			self._display.remove(name)
+			self._graph.remove(name)
 
 	@Slot(str)
 	def _noReply(self, error):
@@ -869,6 +1223,7 @@ class MqLiveData(QWidget):
 	@Slot()
 	def _clear(self):
 		self._tree.clearTopics()
+		self._graph.clear()
 		self._messages = 0
 		self._missed = 0
 		self._updateStatus()

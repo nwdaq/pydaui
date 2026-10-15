@@ -229,6 +229,18 @@ class Icons:
 		</svg>""")
 
 	@staticmethod
+	def graph():
+		"""The graph icon: a blue and a red line over a gray grid and axis."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<path fill="none" stroke="{Icons.LIGHT_GRAY}" stroke-width="0.8" d="M9 2.5 V21.5 M15.5 2.5 V21.5 M2.5 8 H21.5 M2.5 14.5 H21.5"/>
+			<path fill="none" stroke="{Icons.DARK_GRAY}" stroke-width="1.1" stroke-linecap="round" d="M2.5 2.5 V21.5 H21.5"/>
+			<path fill="none" stroke="{Icons.RED}" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"
+				d="M2.5 15 L6 17 L9.5 12.5 L13 16 L17 13 L21 15.5"/>
+			<path fill="none" stroke="{Icons.PRIMARY}" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"
+				d="M2.5 10 L5.5 6 L9 9 L12.5 4.5 L16 8 L21 5"/>
+		</svg>""")
+
+	@staticmethod
 	def liveData():
 		"""The live data icon: a blue topic tree, a root with three leaves, and a red dot of a value
 		arriving at the middle one."""
