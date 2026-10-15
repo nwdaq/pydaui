@@ -283,6 +283,55 @@ class Icons:
 		</svg>""")
 
 	@staticmethod
+	def certificate():
+		"""The calibration certificate icon: a white sheet with gray lines of text and a red rosette with
+		two ribbons in its lower right corner."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<path fill="{Icons.WHITE}" stroke="{Icons.PRIMARY}" stroke-width="1.1" stroke-linejoin="round"
+				d="M4 2.5 H16 L20 6.5 V21.5 H4 Z"/>
+			<path fill="{Icons.PRIMARY_LIGHT}" stroke="{Icons.PRIMARY}" stroke-width="1.1" stroke-linejoin="round"
+				d="M16 2.5 V6.5 H20"/>
+			<path fill="none" stroke="{Icons.GRAY}" stroke-width="1.1" stroke-linecap="round"
+				d="M7 7 H13 M7 10 H17 M7 13 H12"/>
+			<path fill="{Icons.LIGHT_RED}" stroke="{Icons.DARK_RED}" stroke-width="1" stroke-linejoin="round"
+				d="M13.5 18 L12.5 23 L14.5 21.8 L15.5 23.5 L16 18.5 Z M18.5 18 L19.5 23 L17.5 21.8 L16.5 23.5 L16 18.5 Z"/>
+			<circle cx="16" cy="16" r="3.2" fill="{Icons.RED}" stroke="{Icons.DARK_RED}" stroke-width="1.1"/>
+		</svg>""")
+
+	@staticmethod
+	def company():
+		"""The company icon: a blue office building with windows and a door, a lower white wing to the right."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<g stroke="{Icons.PRIMARY}" stroke-width="1.1" stroke-linejoin="round">
+				<rect x="14.5" y="9.5" width="6.5" height="12" fill="{Icons.WHITE}"/>
+				<rect x="3.5" y="2.5" width="11" height="19" fill="{Icons.PRIMARY_LIGHT}"/>
+			</g>
+			<g fill="{Icons.WHITE}" stroke="{Icons.PRIMARY}" stroke-width="0.8">
+				<rect x="5.8" y="5" width="2.4" height="2.4"/>
+				<rect x="9.8" y="5" width="2.4" height="2.4"/>
+				<rect x="5.8" y="9" width="2.4" height="2.4"/>
+				<rect x="9.8" y="9" width="2.4" height="2.4"/>
+				<rect x="5.8" y="13" width="2.4" height="2.4"/>
+				<rect x="9.8" y="13" width="2.4" height="2.4"/>
+			</g>
+			<g fill="{Icons.PRIMARY_LIGHT}" stroke="{Icons.PRIMARY}" stroke-width="0.8">
+				<rect x="16.6" y="12" width="2.4" height="2.4"/>
+				<rect x="16.6" y="16" width="2.4" height="2.4"/>
+			</g>
+			<rect x="7.6" y="17.2" width="2.8" height="4.3" fill="{Icons.PRIMARY}"/>
+		</svg>""")
+
+	@staticmethod
+	def person():
+		"""The person icon: a head and shoulders in blue."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<g fill="{Icons.PRIMARY_LIGHT}" stroke="{Icons.PRIMARY}" stroke-width="1.1" stroke-linejoin="round">
+				<path d="M3.5 21.5 V19 Q3.5 13.5 12 13.5 Q20.5 13.5 20.5 19 V21.5 Z"/>
+				<circle cx="12" cy="7.5" r="4.5"/>
+			</g>
+		</svg>""")
+
+	@staticmethod
 	def pause():
 		"""A pause icon: two blue bars."""
 		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
