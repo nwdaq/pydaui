@@ -662,6 +662,317 @@ class RepositoriesSection(SettingsSection):
 		return Icons.plum()
 
 
+class CalibrationPartyList(StyledTreeWidget):
+
+	def __init__(self, labels, ratios):
+		super().__init__()
+		self.COLUMN_RATIOS = ratios
+		self.setHeaderLabels(labels)
+		self.setRootIsDecorated(False)
+
+
+class CalibrationPartyPage(SettingsPage):
+	"""Base class for a page of the calibration parties, the entries of the administrative data of a calibration
+	certificate (see the plumCore calibration certificate EP) in a list, added and edited in a group shown below
+	it. The entries are kept as the maps put into the certificates, the fields left empty are left out."""
+
+	#: The setting keeping the entries, a list of maps.
+	KEY = ''
+	#: The title of the list.
+	TITLE = ''
+	#: The texts of an entry, used in the titles and the questions, e.g. ``'company'``.
+	ENTRY = ''
+	#: The fields of an entry as (key, label, kind, placeholder), ``kind`` one of :data:`TEXT`,
+	#: :data:`MULTILINE`, :data:`CHECK` and :data:`SIGN`. The first one is the name, it must not be empty.
+	FIELDS = ()
+	#: The columns of the list as (field key, title), the first one is the name.
+	COLUMNS = ()
+	COLUMN_RATIOS = None
+
+	TEXT = 'text'
+	MULTILINE = 'multiline'
+	CHECK = 'check'
+	SIGN = 'sign'
+
+	#: The signature methods offered, the first one for none (see the Signatures of the EP).
+	SIGN_METHODS = ('', 'ed25519')
+
+	def __init__(self, settings):
+		super().__init__(settings)
+
+		self._list = CalibrationPartyList([self.tr(title) for key, title in self.COLUMNS], self.COLUMN_RATIOS)
+		self._list.itemSelectionChanged.connect(self._updateButtons)
+		self._list.itemDoubleClicked.connect(lambda item, column: self._edit())
+
+		self._add = DauiButton(self.tr('Add'), Icons.add())
+		self._add.clicked.connect(self._startAdd)
+		self._edit_btn = DauiButton(self.tr('Edit'), Icons.edit())
+		self._edit_btn.clicked.connect(self._edit)
+		self._remove = DauiButton(self.tr('Remove'), Icons.remove())
+		self._remove.clicked.connect(self._removeSelected)
+		buttons = QHBoxLayout()
+		buttons.setContentsMargins(0, 0, 0, 0)
+		buttons.addWidget(self._add)
+		buttons.addWidget(self._edit_btn)
+		buttons.addWidget(self._remove)
+		buttons.addStretch(1)
+		button_row = QWidget()
+		button_row.setLayout(buttons)
+
+		self._group(self.tr(self.TITLE), self._list, button_row)
+		self._form_group = self._editGroup()
+
+		# The index of the entry being edited, None when adding one.
+		self._editing = None
+		self._load()
+		self._closeEdit()
+
+	@classmethod
+	def entries(cls, settings):
+		"""The entries in the ``settings``, the maps with a name."""
+		entries = settings.get(cls.KEY, [])
+		if not isinstance(entries, list):
+			return []
+		return [e for e in entries if isinstance(e, dict) and isinstance(e.get('n'), str)]
+
+	def _editGroup(self):
+		"""The group adding or editing an entry, hidden until Add or Edit is clicked."""
+		fields = form_layout()
+		fields.setContentsMargins(0, 0, 0, 0)
+		field_rows = QWidget()
+		field_rows.setLayout(fields)
+
+		self._confirm = DauiButton(self.tr('Add'), Icons.confirm())
+		self._confirm.setDefault(True)
+		self._confirm.clicked.connect(self._confirmEdit)
+		cancel = DauiButton(self.tr('Cancel'), Icons.cancel())
+		cancel.clicked.connect(self._closeEdit)
+
+		# The edit widgets by the field keys.
+		self._fields = {}
+		for key, label, kind, placeholder in self.FIELDS:
+			if kind == self.MULTILINE:
+				widget = QPlainTextEdit()
+				widget.setPlaceholderText(self.tr(placeholder))
+				widget.setTabChangesFocus(True)
+				# A few lines, e.g. of an address.
+				widget.setFixedHeight(widget.fontMetrics().lineSpacing() * 4 + 12)
+			elif kind == self.CHECK:
+				widget = QCheckBox(self.tr(placeholder))
+			elif kind == self.SIGN:
+				widget = QComboBox()
+				for method in self.SIGN_METHODS:
+					widget.addItem(method or self.tr('Not signed'), method)
+			else:
+				widget = QLineEdit()
+				widget.setPlaceholderText(self.tr(placeholder))
+				# Enter confirms from the edit boxes.
+				widget.returnPressed.connect(self._confirm.click)
+			self._fields[key] = widget
+			fields.addRow(WrappedLabel(self.tr(label)), widget)
+		self._fields['n'].textChanged.connect(self._updateConfirm)
+
+		# Escape cancels.
+		QShortcut(QKeySequence(Qt.Key_Escape), field_rows, cancel.click, context=Qt.WidgetWithChildrenShortcut)
+		buttons = QHBoxLayout()
+		buttons.setContentsMargins(0, 0, 0, 0)
+		buttons.addStretch(1)
+		buttons.addWidget(self._confirm)
+		buttons.addWidget(cancel)
+		button_row = QWidget()
+		button_row.setLayout(buttons)
+
+		return self._group('', field_rows, button_row)
+
+	def _entry(self):
+		"""The entry of the edited fields, without the empty ones."""
+		entry = {}
+		for key, label, kind, placeholder in self.FIELDS:
+			widget = self._fields[key]
+			if kind == self.MULTILINE:
+				value = widget.toPlainText().strip()
+			elif kind == self.CHECK:
+				value = widget.isChecked()
+			elif kind == self.SIGN:
+				value = widget.currentData()
+			else:
+				value = widget.text().strip()
+			if value:
+				entry[key] = value
+		return entry
+
+	def _load(self):
+		self._list.clear()
+		for entry in self.entries(self._settings):
+			# One line per entry, the lines e.g. of an address separated by commas.
+			item = QTreeWidgetItem([', '.join(line.strip() for line in str(entry.get(key, '')).splitlines()
+			                                  if line.strip()) for key, title in self.COLUMNS])
+			self._list.styleName(item)
+			self._list.addTopLevelItem(item)
+
+	@Slot()
+	def _startAdd(self):
+		self._openEdit(None, self.tr('Add %s') % self.tr(self.ENTRY), self.tr('Add'), {})
+
+	@Slot()
+	def _edit(self):
+		index = self._list.indexOfTopLevelItem(self._list.currentItem())
+		if index < 0 or self._form_group.isVisible():
+			return
+		self._openEdit(index, self.tr('Edit %s') % self.tr(self.ENTRY), self.tr('Confirm'),
+		               self.entries(self._settings)[index])
+
+	def _openEdit(self, index, title, confirm, entry):
+		self._editing = index
+		self._form_group.setTitle(title)
+		self._confirm.setText(confirm)
+		for key, label, kind, placeholder in self.FIELDS:
+			widget = self._fields[key]
+			value = entry.get(key)
+			if kind == self.MULTILINE:
+				widget.setPlainText(str(value or ''))
+			elif kind == self.CHECK:
+				widget.setChecked(value is True)
+			elif kind == self.SIGN:
+				# A method not offered, e.g. from a newer version, is kept.
+				if widget.findData(value or '') < 0:
+					widget.addItem(str(value), value)
+				widget.setCurrentIndex(widget.findData(value or ''))
+			else:
+				widget.setText(str(value or ''))
+		self._updateConfirm()
+		self._form_group.show()
+		self._fields['n'].setFocus()
+		self._updateButtons()
+
+	@Slot()
+	def _confirmEdit(self):
+		if not self._confirm.isEnabled():
+			return
+		entries = self.entries(self._settings)
+		entry = self._entry()
+		if self._editing is None:
+			entries.append(entry)
+		else:
+			# The keys not edited here, e.g. added by a newer version, are kept.
+			edited = {key for key, label, kind, placeholder in self.FIELDS}
+			entries[self._editing] = dict({k: v for k, v in entries[self._editing].items() if k not in edited},
+			                              **entry)
+		row = len(entries) - 1 if self._editing is None else self._editing
+		self._set(self.KEY, entries)
+		self._load()
+		self._list.setCurrentItem(self._list.topLevelItem(row))
+		self._closeEdit()
+
+	@Slot()
+	def _removeSelected(self):
+		index = self._list.indexOfTopLevelItem(self._list.currentItem())
+		if index < 0 or self._form_group.isVisible():
+			return
+		entries = self.entries(self._settings)
+		answer = QMessageBox.question(self, self.tr('Remove %s') % self.tr(self.ENTRY),
+			self.tr('Remove the %s %s?') % (self.tr(self.ENTRY), entries[index]['n']))
+		if answer != QMessageBox.Yes:
+			return
+		del entries[index]
+		self._set(self.KEY, entries)
+		self._load()
+		self._updateButtons()
+
+	@Slot()
+	def _closeEdit(self):
+		self._editing = None
+		self._form_group.hide()
+		self._updateButtons()
+
+	@Slot()
+	def _updateButtons(self):
+		editing = self._form_group.isVisibleTo(self)
+		self._add.setEnabled(not editing)
+		selected = self._list.currentItem() is not None
+		self._edit_btn.setEnabled(not editing and selected)
+		self._remove.setEnabled(not editing and selected)
+
+	@Slot()
+	def _updateConfirm(self):
+		self._confirm.setEnabled(bool(self._fields['n'].text().strip()))
+
+
+class CalibrationCompaniesPage(CalibrationPartyPage):
+	"""The companies offered as the laboratory and the customer of a calibration certificate."""
+
+	NAME = 'Companies'
+	KEY = 'calibration.companies'
+	TITLE = 'Companies'
+	ENTRY = 'company'
+	FIELDS = (
+		('n', 'Name:', CalibrationPartyPage.TEXT, 'name of the organisation'),
+		('addr', 'Address:', CalibrationPartyPage.MULTILINE, 'postal address, one line per row'),
+		('email', 'E-mail:', CalibrationPartyPage.TEXT, 'contact e-mail address'),
+		('phone', 'Phone:', CalibrationPartyPage.TEXT, 'contact telephone number'),
+		('acc', 'Accreditation:', CalibrationPartyPage.TEXT, 'accreditation identifier, e.g. of a laboratory'),
+		('sign', 'Signature:', CalibrationPartyPage.SIGN, ''),
+	)
+	COLUMNS = (('n', 'Name'), ('addr', 'Address'), ('acc', 'Accreditation'))
+	COLUMN_RATIOS = (3, 4, 2)
+
+	@staticmethod
+	def sectionIcon():
+		return Icons.company()
+
+
+class CalibrationPersonsPage(CalibrationPartyPage):
+	"""The persons offered as the responsible persons of a calibration certificate."""
+
+	NAME = 'Persons'
+	KEY = 'calibration.persons'
+	TITLE = 'Persons'
+	ENTRY = 'person'
+	FIELDS = (
+		('n', 'Name:', CalibrationPartyPage.TEXT, 'full name of the person'),
+		('role', 'Role:', CalibrationPartyPage.TEXT, 'e.g. calibrated by, approved by'),
+		('main', 'Principal signatory:', CalibrationPartyPage.CHECK, 'The principal signatory of the certificate'),
+		('sign', 'Signature:', CalibrationPartyPage.SIGN, ''),
+	)
+	COLUMNS = (('n', 'Name'), ('role', 'Role'))
+	COLUMN_RATIOS = (1, 1)
+
+	@staticmethod
+	def sectionIcon():
+		return Icons.person()
+
+
+class CalibrationSoftwarePage(CalibrationPartyPage):
+	"""The software used to perform the calibration and produce a calibration certificate."""
+
+	NAME = 'Software'
+	KEY = 'calibration.software'
+	TITLE = 'Software'
+	ENTRY = 'software'
+	FIELDS = (
+		('n', 'Name:', CalibrationPartyPage.TEXT, 'name of the software component'),
+		('ver', 'Version:', CalibrationPartyPage.TEXT, 'version of the software component'),
+	)
+	COLUMNS = (('n', 'Name'), ('ver', 'Version'))
+	COLUMN_RATIOS = (2, 1)
+
+	@staticmethod
+	def sectionIcon():
+		return Icons.window()
+
+
+class CalibrationPartiesSection(SettingsSection):
+	"""The companies, persons and software put into the administrative data of the calibration
+	certificates."""
+
+	NAME = 'Calibration parties'
+	PAGES = (CalibrationCompaniesPage, CalibrationPersonsPage, CalibrationSoftwarePage)
+
+	@staticmethod
+	def sectionIcon():
+		return Icons.certificate()
+
+
 class _SectionTree(QTreeWidget):
 	"""The tree of sections, as wide as its widest item but at least the minimal width."""
 
