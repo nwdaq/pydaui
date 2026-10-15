@@ -7,7 +7,7 @@ import os
 import subprocess
 import sys
 from glob import glob
-from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 src = os.path.join(SPECPATH, '..', 'src', 'pydaui')
 
@@ -43,6 +43,10 @@ datas.append((_changelog, 'pydaui'))
 binaries = []
 # Imported with importlib, its name is not a Python identifier
 hiddenimports = ['pydaui.applets.mq-live-data']
+# The numpy C extensions import some of numpy._core (e.g. _exceptions), the analysis does not see them
+hiddenimports += collect_submodules('numpy._core', filter=lambda name: '.tests' not in name)
+# Imported by pyqtgraph with importlib
+hiddenimports += ['PySide6.QtOpenGL', 'PySide6.QtOpenGLWidgets']
 
 # Packages discovered through entry points need their metadata and data files
 for package in ['pyocd', 'cmsis_pack_manager', 'pylink']:
@@ -62,8 +66,7 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     # Qt modules not used
-    excludes=['PIL', 'PySide6.QtOpenGL', 'PySide6.QtOpenGLWidgets',
-        'PySide6.QtNetwork', 'PySide6.QtDataVisualization'],
+    excludes=['PIL', 'PySide6.QtNetwork', 'PySide6.QtDataVisualization'],
     noarchive=False,
     optimize=0,
 )
