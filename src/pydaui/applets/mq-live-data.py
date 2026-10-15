@@ -863,6 +863,59 @@ class _TimeAxis(pg.AxisItem):
 		return [f'{v:.0f}' if round(v) % self._label_step == 0 else '' for v in values]
 
 
+def monospace_font():
+	"""The monospace font of the size of the user interface font, of the numbers and the graphs."""
+	font = QFontDatabase.systemFont(QFontDatabase.FixedFont)
+	font.setPointSizeF(QApplication.font().pointSizeF())
+	return font
+
+
+class _Plot(pg.PlotWidget):
+	"""The look of the graphs: a white background with a light grid, the axes and the legend in the
+	:func:`monospace_font`. The mouse neither moves nor zooms the graph, its menu and the auto range button are
+	hidden. ``bottom`` is the :class:`pyqtgraph.AxisItem` of the horizontal axis, the default one if ``None``."""
+
+	#: Colours of the axes, of their text and of the frame of the legend.
+	AXIS_COLOR = '#888'
+	TEXT_COLOR = '#333'
+	BORDER_COLOR = '#d6d6d6'
+
+	#: The width of the lines, in pixels.
+	LINE_WIDTH = 1.5
+
+	def __init__(self, bottom=None):
+		super().__init__(background='w', axisItems=None if bottom is None else {'bottom': bottom})
+		self._font = monospace_font()
+		item = self.getPlotItem()
+		item.setMenuEnabled(False)
+		item.hideButtons()
+		item.showGrid(x=True, y=True, alpha=0.3)
+		for name in ('bottom', 'left'):
+			axis = item.getAxis(name)
+			axis.setPen(pg.mkPen(self.AXIS_COLOR))
+			axis.setTextPen(pg.mkPen(self.TEXT_COLOR))
+			axis.setTickFont(self._font)
+			axis.label.setFont(self._font)
+			# The values have no units, a scale like "(x0.001)" by the label would be confusing.
+			axis.enableAutoSIPrefix(False)
+		self._legend = item.addLegend(offset=(10, 10), brush=pg.mkBrush(255, 255, 255, 220),
+		                              pen=pg.mkPen(self.BORDER_COLOR), labelTextColor=self.TEXT_COLOR,
+		                              labelTextSize=f'{self._font.pointSizeF():g}pt')
+		self.getPlotItem().getViewBox().setMouseEnabled(x=False, y=False)
+
+	def setAxisLabel(self, axis, text):
+		"""Label the ``axis``, ``'bottom'`` or ``'left'``, with ``text``."""
+		self.getPlotItem().setLabel(axis, text, color=self.TEXT_COLOR)
+
+	def addLine(self, item):
+		"""Add ``item`` and its name to the legend in the monospace font."""
+		self.addItem(item)
+		label = self._legend.getLabel(item)
+		if label is not None:
+			label.item.setFont(self._font)
+			label.setText(item.name())
+
+
 class MqGraph(QWidget):
 	"""The Graph tab, a line of every selected topic over time. The time is in seconds since the graph was
 	started or cleared. Its top panel sets the time span shown and whether the graph follows the newest values,
@@ -878,14 +931,9 @@ class MqGraph(QWidget):
 	MIN_REFRESH_MS = 50
 	MAX_REFRESH_MS = 1000
 
-	#: Colours of the line under the top panel, of the axes, of their text and of the text of the top panel.
+	#: Colours of the line under the top panel and of its text.
 	BORDER_COLOR = '#d6d6d6'
-	AXIS_COLOR = '#888'
-	TEXT_COLOR = '#333'
 	BAR_TEXT_COLOR = '#555'
-
-	#: The width of the lines, in pixels.
-	LINE_WIDTH = 1.5
 
 	def __init__(self):
 		super().__init__()
@@ -897,10 +945,6 @@ class MqGraph(QWidget):
 		self._colors = {}
 		# The clocks of the devices publishing the values by the device name.
 		self._clocks = {}
-
-		font = QFontDatabase.systemFont(QFontDatabase.FixedFont)
-		font.setPointSizeF(QApplication.font().pointSizeF())
-		self._font = font
 
 		bar = QWidget()
 		bar.setObjectName('bar')
@@ -927,32 +971,18 @@ class MqGraph(QWidget):
 		row.addWidget(self._follow)
 		row.addStretch()
 
-		self._plot = pg.PlotWidget(background='w', axisItems={'bottom': _TimeAxis()})
+		self._plot = _Plot(_TimeAxis())
 		item = self._plot.getPlotItem()
-		item.setMenuEnabled(False)
-		item.hideButtons()
 		# Only the time shown is drawn, reduced to the minimum and the maximum of every pixel. Set for the
 		# lines as they are added.
 		item.setClipToView(True)
 		item.setDownsampling(auto=True, mode='peak')
-		item.showGrid(x=True, y=True, alpha=0.3)
-		for name in ('bottom', 'left'):
-			axis = item.getAxis(name)
-			axis.setPen(pg.mkPen(self.AXIS_COLOR))
-			axis.setTextPen(pg.mkPen(self.TEXT_COLOR))
-			axis.setTickFont(font)
-			axis.label.setFont(font)
 		bottom = item.getAxis('bottom')
 		# The time labels are thinned out to fit by the axis, all of them are shown.
 		bottom.setStyle(textFillLimits=[(0, 0.95)])
-		bottom.enableAutoSIPrefix(False)
-		item.setLabel('bottom', self.tr('Time (s)'), color=self.TEXT_COLOR)
-		self._legend = item.addLegend(offset=(10, 10), brush=pg.mkBrush(255, 255, 255, 220),
-		                              pen=pg.mkPen(self.BORDER_COLOR), labelTextColor=self.TEXT_COLOR,
-		                              labelTextSize=f'{font.pointSizeF():g}pt')
+		self._plot.setAxisLabel('bottom', self.tr('Time (s)'))
 		# The time is set by the span and the values fill the height of the time shown.
 		view = item.getViewBox()
-		view.setMouseEnabled(x=False, y=False)
 		view.disableAutoRange(pg.ViewBox.XAxis)
 		view.enableAutoRange(pg.ViewBox.YAxis)
 		view.setAutoVisible(y=True)
@@ -995,15 +1025,11 @@ class MqGraph(QWidget):
 		self._colors[name] = color
 		# The peaks of every half a pixel rather than of a fraction of it keep the lines of a long time span quick
 		# to draw.
-		curve = pg.PlotDataItem(name=name, pen=pg.mkPen(color, width=self.LINE_WIDTH), antialias=True,
+		curve = pg.PlotDataItem(name=name, pen=pg.mkPen(color, width=_Plot.LINE_WIDTH), antialias=True,
 		                        connect='finite', autoDownsampleFactor=2.0)
 		curve.setData(series.x, series.y)
 		series.dirty = False
-		self._plot.addItem(curve)
-		label = self._legend.getLabel(curve)
-		if label is not None:
-			label.item.setFont(self._font)
-			label.setText(name)
+		self._plot.addLine(curve)
 		self._curves[name] = curve
 		self._stack.setCurrentWidget(self._plot)
 		self._refresh()
@@ -1249,10 +1275,7 @@ class MqStatistics(QWidget):
 		self._topics = {}
 		# The items of the metrics by the key.
 		self._items = {}
-
-		font = QFontDatabase.systemFont(QFontDatabase.FixedFont)
-		font.setPointSizeF(QApplication.font().pointSizeF())
-		self._font = font
+		self._font = font = monospace_font()
 
 		bar = QWidget()
 		bar.setObjectName('bar')
