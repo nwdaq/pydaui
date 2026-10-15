@@ -179,6 +179,7 @@ class WrappedLabel(QWidget):
 	def __init__(self, text='', parent=None):
 		super().__init__(parent)
 		self._text = text
+		self._alignment = Qt.AlignTop
 		# Not Fixed vertically, a layout caps the height for the width at the size hint then.
 		size_policy = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
 		size_policy.setHeightForWidth(True)
@@ -190,6 +191,12 @@ class WrappedLabel(QWidget):
 	def setText(self, text):
 		self._text = text
 		self.updateGeometry()
+		self.update()
+
+	def setAlignment(self, alignment):
+		"""Where the text is when the label is taller than it, the vertical part of ``alignment``: at the top
+		(the default), in the middle or at the bottom."""
+		self._alignment = alignment & Qt.AlignVertical_Mask
 		self.update()
 
 	def _layout(self, width):
@@ -234,10 +241,15 @@ class WrappedLabel(QWidget):
 		return QSize(width, metrics.height())
 
 	def paintEvent(self, event):
-		layout, _height = self._layout(self.width())
+		layout, height = self._layout(self.width())
+		top = 0
+		if self._alignment & Qt.AlignVCenter:
+			top = (self.height() - height) / 2
+		elif self._alignment & Qt.AlignBottom:
+			top = self.height() - height
 		painter = QPainter(self)
 		painter.setPen(self.palette().color(QPalette.WindowText))
-		layout.draw(painter, QPointF(0, 0))
+		layout.draw(painter, QPointF(0, max(top, 0)))
 
 
 class WrappedCheckBox(QWidget):

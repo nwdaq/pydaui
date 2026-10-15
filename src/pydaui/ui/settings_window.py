@@ -18,6 +18,34 @@ from pydaui.ui.helpers import ANDROID, AppletWindow, DauiButton, StyledTreeWidge
 from pydaui.ui.icons import Icons
 
 
+#: How much taller the edit boxes of the settings are than they would be.
+EDIT_EXTRA_HEIGHT = 6
+
+
+def form_layout():
+	"""A form of the settings, a field too wide to be next to its label goes below it. The fields span the
+	whole width."""
+	form = QFormLayout()
+	form.setRowWrapPolicy(QFormLayout.WrapLongRows)
+	# The rows span the whole width on any platform, some keep them at their size hint by default.
+	form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+	return form
+
+
+def polish_forms(widget):
+	"""Make the edit boxes in ``widget`` a bit taller, :data:`EDIT_EXTRA_HEIGHT`, not the edit boxes within
+	the spin and combo boxes, and put the labels of the forms in the middle of their fields vertically."""
+	for edit_type in (QLineEdit, QComboBox, QAbstractSpinBox):
+		for edit in widget.findChildren(edit_type):
+			if not isinstance(edit.parent(), (QComboBox, QAbstractSpinBox)):
+				edit.setFixedHeight(edit.sizeHint().height() + EDIT_EXTRA_HEIGHT)
+	for form in widget.findChildren(QFormLayout):
+		for row in range(form.rowCount()):
+			label = form.itemAt(row, QFormLayout.LabelRole)
+			if label is not None and isinstance(label.widget(), WrappedLabel):
+				label.widget().setAlignment(Qt.AlignVCenter)
+
+
 class SettingsGroup(QWidget):
 	"""A group box with the ``widgets`` below each other, the ``title`` above it wraps unlike the title of
 	a :class:`QGroupBox`."""
@@ -57,10 +85,7 @@ class SettingsPage(QWidget):
 
 		#: The rows of the section, its subclasses add them with ``addRow()``. A field too wide to be next
 		#: to its label goes below it.
-		self._form = QFormLayout()
-		self._form.setRowWrapPolicy(QFormLayout.WrapLongRows)
-		# The rows span the whole width on any platform, some keep them at their size hint by default.
-		self._form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+		self._form = form_layout()
 
 		layout = QVBoxLayout()
 		layout.addLayout(self._form)
@@ -271,10 +296,8 @@ class SshSessionsPage(SettingsPage):
 		key = QWidget()
 		key.setLayout(key_row)
 
-		fields = QFormLayout()
+		fields = form_layout()
 		fields.setContentsMargins(0, 0, 0, 0)
-		fields.setRowWrapPolicy(QFormLayout.WrapLongRows)
-		fields.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
 		fields.addRow(WrappedLabel(self.tr('Name:')), self._name)
 		fields.addRow(WrappedLabel(self.tr('Host:')), self._host)
 		fields.addRow(WrappedLabel(self.tr('Port:')), self._port)
@@ -493,10 +516,8 @@ class RepositoriesSection(SettingsSection):
 		self._url = QLineEdit()
 		self._url.setPlaceholderText('https://')
 		self._url.textChanged.connect(self._updateConfirm)
-		fields = QFormLayout()
+		fields = form_layout()
 		fields.setContentsMargins(0, 0, 0, 0)
-		fields.setRowWrapPolicy(QFormLayout.WrapLongRows)
-		fields.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
 		fields.addRow(WrappedLabel(self.tr('Name:')), self._name)
 		fields.addRow(WrappedLabel(self.tr('URL:')), self._url)
 		field_rows = QWidget()
@@ -839,5 +860,6 @@ class SettingsWindow(AppletWindow):
 					self._pages.addPage(page_cls(settings), self.tr(page_cls.NAME), page_cls.sectionIcon(), group)
 			else:
 				self._pages.addPage(section_cls(settings), self.tr(section_cls.NAME), section_cls.sectionIcon())
+		polish_forms(self._pages)
 		self.setWidget(self._pages)
 		self.resize(720, 520)
