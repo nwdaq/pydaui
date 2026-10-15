@@ -241,6 +241,22 @@ class Icons:
 		</svg>""")
 
 	@staticmethod
+	def statistics():
+		"""The statistics icon: blue histogram bars under a red bell curve over a gray axis."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<g fill="{Icons.PRIMARY_LIGHT}" stroke="{Icons.PRIMARY}" stroke-width="1.1" stroke-linejoin="round">
+				<rect x="4" y="16" width="3.2" height="5.5"/>
+				<rect x="7.2" y="10" width="3.2" height="11.5"/>
+				<rect x="10.4" y="6" width="3.2" height="15.5"/>
+				<rect x="13.6" y="10" width="3.2" height="11.5"/>
+				<rect x="16.8" y="16" width="3.2" height="5.5"/>
+			</g>
+			<path fill="none" stroke="{Icons.RED}" stroke-width="1.6" stroke-linecap="round"
+				d="M2 20.5 C6 20 7 4 12 4 S18 20 22 20.5"/>
+			<path fill="none" stroke="{Icons.DARK_GRAY}" stroke-width="1.1" stroke-linecap="round" d="M2 21.5 H22"/>
+		</svg>""")
+
+	@staticmethod
 	def liveData():
 		"""The live data icon: a blue topic tree, a root with three leaves, and a red dot of a value
 		arriving at the middle one."""

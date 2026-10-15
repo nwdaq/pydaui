@@ -10,8 +10,8 @@
 It talks to an interface speaking the ``mq`` protocol (plumCore services/nbus-mq-poll), polling it with the
 :class:`pynbus2.mq.MqPollClient` off the GUI thread. Every topic is shown once in a tree split by its
 levels, its row is updated as new values arrive. The topic filter replaces the subscription of the remote
-message queue. The selected topics are shown in big letters in the Display tab and graphed over time in the
-Graph tab.
+message queue. The selected topics are shown in big letters in the Display tab, graphed over time in the
+Graph tab and their precision is assessed in the Statistics tab.
 
 The module name is not a Python identifier, import it with :func:`importlib.import_module`.
 """
@@ -30,7 +30,7 @@ from PySide6.QtCore import *
 from PySide6.QtWidgets import *
 from PySide6.QtGui import *
 
-from pydaui.ui.helpers import AppletWindow, DauiButton
+from pydaui.ui.helpers import AppletWindow, DauiButton, StyledTreeWidget
 from pydaui.ui.icons import Icons
 from pydaui.ui.tree import GuideTreeWidget
 
@@ -812,6 +812,12 @@ class _Series:
 	def y(self):
 		return self._y[:self._n]
 
+	def window(self, start, end):
+		"""The times and the values from ``start`` to ``end``."""
+		x = self.x
+		first, last = int(np.searchsorted(x, start, side='left')), int(np.searchsorted(x, end, side='right'))
+		return x[first:last], self.y[first:last]
+
 
 class _TimeAxis(pg.AxisItem):
 	"""The time axis in seconds with minor ticks every 10 s and major ones every minute, finer ones for the
@@ -1033,6 +1039,22 @@ class MqGraph(QWidget):
 			curve.setData(self._series[name].x, self._series[name].y)
 		self._refresh()
 
+	@property
+	def topics(self):
+		"""The graphed topics and the colours of their lines, in the order they were selected."""
+		return dict(self._colors)
+
+	def window(self, name):
+		"""The times and the values of the topic ``name`` in the time shown."""
+		return self._series[name].window(*self.timeRange())
+
+	def timeRange(self):
+		"""The time shown as ``(start, end)``, in seconds since the graph was started or cleared."""
+		span = GRAPH_SPANS[self._span.currentIndex()][1]
+		t = time.monotonic() - self._t0
+		start = t - span if self._follow.isChecked() else math.floor(t / span) * span
+		return start, start + span
+
 	def showEvent(self, event):
 		super().showEvent(event)
 		self._refresh()
@@ -1048,21 +1070,315 @@ class MqGraph(QWidget):
 				curve.setData(series.x, series.y)
 				series.dirty = False
 
-		span = GRAPH_SPANS[self._span.currentIndex()][1]
-		t = time.monotonic() - self._t0
-		if self._follow.isChecked():
-			start = t - span
-		else:
-			start = math.floor(t / span) * span
-		self._plot.setXRange(start, start + span, padding=0)
-		ms = 1000 * span / max(1, self._plot.getPlotItem().getViewBox().width())
+		start, end = self.timeRange()
+		self._plot.setXRange(start, end, padding=0)
+		ms = 1000 * (end - start) / max(1, self._plot.getPlotItem().getViewBox().width())
 		self._timer.setInterval(int(min(self.MAX_REFRESH_MS, max(self.MIN_REFRESH_MS, ms))))
+
+#: The deviation from the mean, in standard deviations, a value is counted as an outlier beyond.
+OUTLIER_S = 4
+
+
+def precision(t, v):
+	"""The precision metrics of the values ``v`` received at the times ``t`` (sorted, in seconds), a Type A
+	evaluation in the terms of the GUM. Returns a dict, a metric is missing when there are too few values to
+	compute it. The NaN values (gaps) are left out.
+
+	- ``n``, ``span``, ``rate``: the number of values, the time between the first and the last one and the
+	  values per second.
+	- ``mean``, ``min``, ``max``, ``p2p``: the mean, the extremes and the peak-to-peak range.
+	- ``s``, ``rsd``: the experimental standard deviation and the relative one, in %. The repeatability.
+	- ``n_eff``, ``u_mean``: the number of effectively independent values, by the lag-1 autocorrelation of the
+	  deviations from the mean (an AR(1) process), and the standard uncertainty of the mean ``s/sqrt(n_eff)``.
+	  Correlated values, oversampled or filtered by the sensor, carry less information than their count.
+	- ``drift``, ``r2``, ``s_detrended``: the slope of the least squares line per hour, the coefficient of
+	  determination of the line and the standard deviation around it, the noise without the drift.
+	- ``q``, ``u_q``, ``levels``: the resolution as the smallest step between the distinct values, its
+	  standard uncertainty ``q/sqrt(12)`` (Type B) and the number of the distinct values. The resolution only
+	  when the values repeat, at most half of them distinct. Else they are not quantized visibly and the
+	  smallest step is a matter of chance.
+	- ``outliers``: the number of values farther than :data:`OUTLIER_S` standard deviations from the mean.
+	"""
+	finite = np.isfinite(v)
+	t = t[finite]
+	v = v[finite]
+	n = len(v)
+	m = {'n': n}
+	if n == 0:
+		return m
+	span = float(t[-1] - t[0])
+	m['span'] = span
+	if span > 0:
+		m['rate'] = (n - 1) / span
+	mean = float(v.mean())
+	m['mean'] = mean
+	m['min'] = float(v.min())
+	m['max'] = float(v.max())
+	m['p2p'] = m['max'] - m['min']
+
+	levels = np.unique(v)
+	m['levels'] = len(levels)
+	if 1 < len(levels) <= n / 2:
+		q = float(np.diff(levels).min())
+		m['q'] = q
+		m['u_q'] = q / math.sqrt(12)
+
+	if n < 2:
+		return m
+	d = v - mean
+	s = float(math.sqrt(np.dot(d, d) / (n - 1)))
+	m['s'] = s
+	if mean:
+		m['rsd'] = 100 * s / abs(mean)
+	m['outliers'] = int(np.count_nonzero(np.abs(d) > OUTLIER_S * s))
+
+	ss = float(np.dot(d, d))
+	if ss > 0:
+		rho = float(np.dot(d[:-1], d[1:])) / ss
+		n_eff = n * (1 - rho) / (1 + rho) if rho > 0 else n
+		n_eff = min(n, max(1.0, n_eff))
+		m['n_eff'] = n_eff
+		m['u_mean'] = s / math.sqrt(n_eff)
+	else:
+		m['n_eff'] = float(n)
+		m['u_mean'] = 0.0
+
+	if n >= 3 and span > 0:
+		tc = t - t.mean()
+		slope = float(np.dot(tc, d) / np.dot(tc, tc))
+		residuals = d - slope * tc
+		ss_res = float(np.dot(residuals, residuals))
+		m['drift'] = 3600 * slope
+		if ss > 0:
+			m['r2'] = 1 - ss_res / ss
+		m['s_detrended'] = math.sqrt(ss_res / (n - 2))
+	return m
+
+
+def _g(value):
+	return f'{value:.6g}'
+
+
+def _u(value):
+	"""An uncertainty, rounded to two significant digits by the GUM."""
+	return f'{value:.2g}'
+
+
+#: The URL of a clause of the International vocabulary of metrology (VIM, JCGM 200:2012).
+VIM_URL = 'https://jcgm.bipm.org/vim/en/{}.html'
+
+#: The terms of the VIM clauses the statistics refer to.
+VIM_TERMS = {
+	'2.10': 'measured quantity value',
+	'2.15': 'measurement precision',
+	'2.19': 'random measurement error',
+	'2.20': 'repeatability condition of measurement',
+	'2.21': 'measurement repeatability',
+	'2.28': 'Type A evaluation of measurement uncertainty',
+	'2.29': 'Type B evaluation of measurement uncertainty',
+	'2.30': 'standard measurement uncertainty',
+	'4.15': 'resolution of a displaying device',
+	'4.21': 'instrumental drift',
+}
+
+#: The rows of the statistics as groups of ``(key, name, format, VIM clause, description)``, the key of a
+#: metric of :func:`precision`, the clause of :data:`VIM_TERMS` defining it, ``None`` for the metrics the VIM
+#: does not cover.
+STATISTICS = (
+	('Samples', (
+		('n', 'Count N', str, '2.20', 'The number of values in the time shown in the Graph tab'),
+		('span', 'Time span', lambda v: f'{v:.1f} s', '2.20', 'The time between the first and the last value'),
+		('rate', 'Sample rate', lambda v: f'{v:.3g}/s', None, 'The values per second'),
+	)),
+	('Location', (
+		('mean', 'Mean', _g, '2.10', 'The arithmetic mean, the best estimate of the value'),
+		('min', 'Minimum', _g, '2.10', 'The smallest value'),
+		('max', 'Maximum', _g, '2.10', 'The largest value'),
+	)),
+	('Dispersion', (
+		('s', 'Standard deviation s', _g, '2.21', 'The experimental standard deviation, the repeatability'),
+		('rsd', 'Relative std. deviation', lambda v: f'{v:.3g} %', '2.15', 'The standard deviation relative to '
+		 'the mean, the coefficient of variation'),
+		('p2p', 'Peak-to-peak', _g, '2.19', 'The difference of the largest and the smallest value'),
+		('u_mean', 'Std. uncertainty of mean', _u, '2.30', 'The standard uncertainty of the mean, s/\u221aN_eff'),
+		('n_eff', 'Effective N', lambda v: f'{v:.1f}', '2.28', 'The number of effectively independent values, by '
+		 'the lag-1 autocorrelation, lower than N when the values are correlated (oversampled or filtered)'),
+		('outliers', f'Outliers (>{OUTLIER_S} s)', str, None, f'The number of values farther than {OUTLIER_S} '
+		 'standard deviations from the mean'),
+	)),
+	('Stability', (
+		('drift', 'Drift', lambda v: f'{v:.4g}/h', '4.21', 'The slope of the least squares line, per hour'),
+		('r2', 'Drift R\u00b2', lambda v: f'{v:.3f}', '4.21', 'How much of the variance the drift explains, 0 to 1'),
+		('s_detrended', 'Detrended std. deviation', _g, '2.19', 'The standard deviation around the drift line, '
+		 'the noise without the drift'),
+	)),
+	('Resolution', (
+		('q', 'Resolution q', _g, '4.15', 'The smallest step between the distinct values, only when the values '
+		 'repeat. When the standard deviation is not much larger, the quantization dominates the noise'),
+		('u_q', 'Resolution uncertainty', _u, '2.29', 'The standard uncertainty of the resolution, q/\u221a12'),
+		('levels', 'Distinct values', str, '4.15', 'The number of the distinct values'),
+	)),
+)
+
+
+class MqStatistics(QWidget):
+	"""The Statistics tab, the precision metrics of :func:`precision` of every graphed topic over the time shown
+	in the Graph tab. A column for every topic, in the colour of its line. The VIM column refers to the clause of
+	the vocabulary defining the metric, a click opens it."""
+
+	METRIC_COLUMN = 0
+	VIM_COLUMN = 1
+	#: The first column of the topics.
+	TOPIC_COLUMN = 2
+
+	#: Colour of the VIM references.
+	VIM_COLOR = '#1d3f7a'
+
+	#: How often the statistics are computed while they are shown, in milliseconds.
+	REFRESH_MS = 500
+
+	BORDER_COLOR = '#d6d6d6'
+	BAR_TEXT_COLOR = '#555'
+
+	#: The width of the topic columns, in characters of the monospace font.
+	COLUMN_CHARS = 16
+
+	def __init__(self, graph):
+		super().__init__()
+		self._graph = graph
+		self._topics = {}
+		# The items of the metrics by the key.
+		self._items = {}
+
+		font = QFontDatabase.systemFont(QFontDatabase.FixedFont)
+		font.setPointSizeF(QApplication.font().pointSizeF())
+		self._font = font
+
+		bar = QWidget()
+		bar.setObjectName('bar')
+		bar.setAttribute(Qt.WA_StyledBackground)
+		row = QHBoxLayout(bar)
+		row.setContentsMargins(8, 4, 8, 4)
+		self._window = QLabel()
+		self._window.setToolTip(self.tr('The statistics cover the time shown in the Graph tab, set its time span '
+		                                'there'))
+		row.addWidget(self._window)
+		row.addStretch()
+
+		self._tree = StyledTreeWidget()
+		self._tree.setRootIsDecorated(False)
+		self._tree.setIndentation(12)
+		self._tree.setSelectionMode(QAbstractItemView.NoSelection)
+		self._tree.setFocusPolicy(Qt.NoFocus)
+		header = self._tree.header()
+		header.setStretchLastSection(False)
+		header.setDefaultAlignment(Qt.AlignRight | Qt.AlignVCenter)
+		header.setMinimumSectionSize(QFontMetrics(font).horizontalAdvance('0') * self.COLUMN_CHARS)
+		for group, metrics in STATISTICS:
+			parent = QTreeWidgetItem([self.tr(group)])
+			self._tree.addTopLevelItem(parent)
+			self._tree.styleName(parent)
+			for key, name, _format, clause, description in metrics:
+				item = QTreeWidgetItem(parent, [self.tr(name)])
+				item.setToolTip(self.METRIC_COLUMN, self.tr(description))
+				if clause is not None:
+					item.setText(self.VIM_COLUMN, clause)
+					item.setData(self.VIM_COLUMN, Qt.UserRole, VIM_URL.format(clause))
+					item.setToolTip(self.VIM_COLUMN, self.tr('VIM %s %s, click to open') % (clause, VIM_TERMS[clause]))
+					item.setForeground(self.VIM_COLUMN, QColor(self.VIM_COLOR))
+					font = item.font(self.VIM_COLUMN)
+					font.setUnderline(True)
+					item.setFont(self.VIM_COLUMN, font)
+				else:
+					item.setText(self.VIM_COLUMN, '\u2013')
+					item.setToolTip(self.VIM_COLUMN, self.tr('Not defined by the VIM'))
+				item.setTextAlignment(self.VIM_COLUMN, Qt.AlignCenter)
+				self._items[key] = item
+			parent.setExpanded(True)
+		self._tree.itemClicked.connect(self._clicked)
+
+		# Shown while there are no topics.
+		self._hint = QLabel(self.tr('Select topics in the Topics tab to assess their precision here.'))
+		self._hint.setAlignment(Qt.AlignCenter)
+		self._hint.setStyleSheet('color: #888;')
+		self._stack = QStackedWidget()
+		self._stack.addWidget(self._hint)
+		self._stack.addWidget(self._tree)
+		self._setColumns({})
+
+		self.setStyleSheet(f"""
+			QWidget#bar {{ border-bottom: 1px solid {self.BORDER_COLOR}; }}
+			QWidget#bar QLabel {{ color: {self.BAR_TEXT_COLOR}; }}
+		""")
+		layout = QVBoxLayout(self)
+		layout.setContentsMargins(0, 0, 0, 0)
+		layout.setSpacing(0)
+		layout.addWidget(bar)
+		layout.addWidget(self._stack, stretch=1)
+
+		self._timer = QTimer(self)
+		self._timer.setInterval(self.REFRESH_MS)
+		self._timer.timeout.connect(self._refresh)
+		self._timer.start()
+
+	def _setColumns(self, topics):
+		"""A column for every topic of ``topics``, the colours by the names."""
+		self._topics = topics
+		self._tree.setColumnCount(self.TOPIC_COLUMN + len(topics))
+		header = self._tree.headerItem()
+		header.setText(self.METRIC_COLUMN, self.tr('Metric'))
+		header.setTextAlignment(self.METRIC_COLUMN, Qt.AlignLeft | Qt.AlignVCenter)
+		header.setText(self.VIM_COLUMN, self.tr('VIM'))
+		header.setTextAlignment(self.VIM_COLUMN, Qt.AlignCenter)
+		header.setToolTip(self.VIM_COLUMN, self.tr('The clause of the International vocabulary of metrology '
+		                                           '(JCGM 200:2012) defining the metric'))
+		for column, (name, color) in enumerate(topics.items(), self.TOPIC_COLUMN):
+			header.setText(column, name)
+			header.setToolTip(column, name)
+			header.setForeground(column, QColor(color))
+			for item in self._items.values():
+				item.setText(column, '')
+				item.setFont(column, self._font)
+				item.setForeground(column, QColor(color))
+				item.setTextAlignment(column, Qt.AlignRight | Qt.AlignVCenter)
+		self._tree.header().setSectionResizeMode(self.METRIC_COLUMN, QHeaderView.ResizeToContents)
+		self._tree.header().setSectionResizeMode(self.VIM_COLUMN, QHeaderView.ResizeToContents)
+		for column in range(self.TOPIC_COLUMN, self.TOPIC_COLUMN + len(topics)):
+			self._tree.header().setSectionResizeMode(column, QHeaderView.Stretch)
+		self._stack.setCurrentWidget(self._tree if topics else self._hint)
+
+	@Slot(QTreeWidgetItem, int)
+	def _clicked(self, item, column):
+		url = item.data(self.VIM_COLUMN, Qt.UserRole) if column == self.VIM_COLUMN else None
+		if url:
+			QDesktopServices.openUrl(QUrl(url))
+
+	def showEvent(self, event):
+		super().showEvent(event)
+		self._refresh()
+
+	@Slot()
+	def _refresh(self):
+		if not self.isVisible():
+			return
+		topics = self._graph.topics
+		if topics != self._topics:
+			self._setColumns(topics)
+		start, end = self._graph.timeRange()
+		self._window.setText(self.tr('Over the time shown in the Graph tab, %.1f s to %.1f s') % (start, end))
+		for column, name in enumerate(topics, self.TOPIC_COLUMN):
+			metrics = precision(*self._graph.window(name))
+			for _group, rows in STATISTICS:
+				for key, _name, format, _clause, _description in rows:
+					value = metrics.get(key)
+					self._items[key].setText(column, '–' if value is None else format(value))
+
 
 
 class MqLiveData(QWidget):
 	"""The live data with its toolbars: Pause, Clear and the poll rate on the left and the topic filter on the
 	right at the top, the polling status and the message statistics at the bottom. In between, the tabs of the
-	topic tree, of the display and of the graph of the selected topics."""
+	topic tree and of the display, the graph and the statistics of the selected topics."""
 
 	#: The colour of the status, and of an invalid filter.
 	STATUS_COLOR = '#888'
@@ -1074,6 +1390,7 @@ class MqLiveData(QWidget):
 		self._tree = MqLiveDataTreeWidget()
 		self._display = MqDisplayArea(self._tree)
 		self._graph = MqGraph()
+		self._statistics = MqStatistics(self._graph)
 		self._tree.selectionChanged.connect(self._selectionChanged)
 		self._display.panelClosed.connect(lambda name: self._tree.setSelected(name, False))
 		# The filter the poller sends, and the totals shown in the status.
@@ -1150,6 +1467,7 @@ class MqLiveData(QWidget):
 		self._tabs.addTab(self._tree, Icons.liveData(), self.tr('Topics'))
 		self._tabs.addTab(self._display, Icons.data(), self.tr('Display'))
 		self._tabs.addTab(self._graph, Icons.graph(), self.tr('Graph'))
+		self._tabs.addTab(self._statistics, Icons.statistics(), self.tr('Statistics'))
 		self._layout.addWidget(self._tabs)
 		self._layout.addWidget(self._bottom)
 		self.setLayout(self._layout)
