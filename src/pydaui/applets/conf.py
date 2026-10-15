@@ -784,7 +784,6 @@ class ConfTree(QWidget):
 		self._filter.setFixedWidth(220)
 		# As tall as the buttons next to it.
 		self._filter.setFixedHeight(self._reload.sizeHint().height())
-		self._filter.setStyleSheet('QLineEdit { background-color: white; }')
 		self._filter.textChanged.connect(self._tree.setFilter)
 		self._tb.addWidget(self._filter)
 		cancel = DauiButton(btn_icon=Icons.cancel())

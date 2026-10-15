@@ -300,6 +300,10 @@ class DauiApplication(QApplication):
 		self.setApplicationName('pydaui')
 
 		self.setStyle(DauiStyle())
+		# The edit fields are white, the platform theme (e.g. on XFCE) may give them the window colour.
+		palette = self.palette()
+		palette.setColor(QPalette.Base, Qt.white)
+		self.setPalette(palette)
 
 		self._settings = Settings()
 		self._connection = PyDauiConnection()

@@ -1747,8 +1747,8 @@ class MqLiveData(QWidget):
 
 	@Slot(str)
 	def _validateFilter(self, text):
-		border = '' if is_valid_filter(text.strip()) else f' border: 1px solid {self.INVALID_BORDER};'
-		self._filter.setStyleSheet(f'QLineEdit {{ background-color: white;{border} }}')
+		valid = is_valid_filter(text.strip())
+		self._filter.setStyleSheet('' if valid else f'QLineEdit {{ border: 1px solid {self.INVALID_BORDER}; }}')
 
 	@Slot()
 	def _applyFilter(self):
