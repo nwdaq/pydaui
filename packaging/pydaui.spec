@@ -66,7 +66,7 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     # Qt modules not used
-    excludes=['PIL', 'PySide6.QtNetwork', 'PySide6.QtDataVisualization'],
+    excludes=['PySide6.QtNetwork', 'PySide6.QtDataVisualization'],
     noarchive=False,
     optimize=0,
 )
