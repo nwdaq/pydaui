@@ -229,18 +229,31 @@ class FlashClient:
 				if progress is not None:
 					progress(addr + len(expected))
 
-	def read(self, name, size, file, progress=None, abort=None):
+	def read(self, name, size, file, progress=None, abort=None, stop_sector=None):
 		"""Read the whole partition ``name`` of ``size`` bytes into the binary ``file`` object, one block of
 		:attr:`TRANSFER_BLOCK` bytes after another. ``progress`` and ``abort`` are like in :meth:`erase`.
-		Raises ``ValueError`` with the reason if reading fails."""
+		Raises ``ValueError`` with the reason if reading fails.
+
+		With ``stop_sector``, a sector size in bytes (e.g. the erase size), reading ends after the first whole
+		sector aligned to it which is erased, all its bytes 0xff: the rest of the partition is taken as
+		erased, e.g. after the data written to its start. The sector is written to ``file`` too."""
+		# The bytes read of the current sector.
+		sector = bytearray()
 		with self._session(name) as sid:
 			for addr in range(0, size, self.TRANSFER_BLOCK):
 				if abort is not None and abort.is_set():
 					raise Aborted()
 				length = min(self.TRANSFER_BLOCK, size - addr)
-				file.write(self._readBlock(sid, addr, length))
+				data = self._readBlock(sid, addr, length)
+				file.write(data)
 				if progress is not None:
 					progress(addr + length)
+				if stop_sector:
+					sector += data
+					while len(sector) >= stop_sector:
+						if sector.count(0xff, 0, stop_sector) == stop_sector:
+							return
+						del sector[:stop_sector]
 
 	def _readBlock(self, sid, addr, length, check=True):
 		"""Read ``length`` bytes at ``addr`` in the session ``sid``. Raises ``ValueError`` if it fails, or
