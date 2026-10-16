@@ -78,6 +78,41 @@ class Icons:
 		</svg>""")
 
 	@staticmethod
+	def up():
+		"""A move up icon: a thick arrow pointing up."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<path fill="{Icons.PRIMARY_LIGHT}" stroke="{Icons.PRIMARY}" stroke-width="1.1" stroke-linejoin="round"
+				d="M12 4 L19 11.5 H14.5 V20 H9.5 V11.5 H5 Z"/>
+		</svg>""")
+
+	@staticmethod
+	def down():
+		"""A move down icon: a thick arrow pointing down, the move up icon upside down."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<path fill="{Icons.PRIMARY_LIGHT}" stroke="{Icons.PRIMARY}" stroke-width="1.1" stroke-linejoin="round"
+				d="M12 20 L19 12.5 H14.5 V4 H9.5 V12.5 H5 Z"/>
+		</svg>""")
+
+	@staticmethod
+	def indent():
+		"""An indent icon: lines of text, the middle ones indented, with an arrowhead pointing right into the
+		indentation."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<path d="M3 5 H21 M11 10 H21 M11 14 H21 M3 19 H21" stroke="{Icons.GRAY}" stroke-width="1.6" stroke-linecap="round"/>
+			<path fill="{Icons.PRIMARY_LIGHT}" stroke="{Icons.PRIMARY}" stroke-width="1.1" stroke-linejoin="round"
+				d="M3 8 L8.5 12 L3 16 Z"/>
+		</svg>""")
+
+	@staticmethod
+	def unindent():
+		"""An unindent icon: the indent icon with the arrowhead pointing left out of the indentation."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<path d="M3 5 H21 M11 10 H21 M11 14 H21 M3 19 H21" stroke="{Icons.GRAY}" stroke-width="1.6" stroke-linecap="round"/>
+			<path fill="{Icons.PRIMARY_LIGHT}" stroke="{Icons.PRIMARY}" stroke-width="1.1" stroke-linejoin="round"
+				d="M8.5 8 L3 12 L8.5 16 Z"/>
+		</svg>""")
+
+	@staticmethod
 	def confirm():
 		"""A confirm icon: a thick check mark."""
 		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
@@ -238,6 +273,22 @@ class Icons:
 				d="M2.5 15 L6 17 L9.5 12.5 L13 16 L17 13 L21 15.5"/>
 			<path fill="none" stroke="{Icons.PRIMARY}" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"
 				d="M2.5 10 L5.5 6 L9 9 L12.5 4.5 L16 8 L21 5"/>
+		</svg>""")
+
+	@staticmethod
+	def fit():
+		"""The curve fit icon: a dominant red parabola fitted through blue points over a gray grid and axis."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<path fill="none" stroke="{Icons.LIGHT_GRAY}" stroke-width="0.8" d="M9 2.5 V21.5 M15.5 2.5 V21.5 M2.5 8 H21.5 M2.5 14.5 H21.5"/>
+			<path fill="none" stroke="{Icons.DARK_GRAY}" stroke-width="1.1" stroke-linecap="round" d="M2.5 2.5 V21.5 H21.5"/>
+			<path fill="none" stroke="{Icons.RED}" stroke-width="2" stroke-linecap="round"
+				d="M3.5 19.5 Q12.5 19.5 20.5 3"/>
+			<g fill="{Icons.PRIMARY_LIGHT}" stroke="{Icons.PRIMARY}" stroke-width="1">
+				<circle cx="6" cy="17.4" r="1.5"/>
+				<circle cx="11" cy="17.2" r="1.5"/>
+				<circle cx="15" cy="12.6" r="1.5"/>
+				<circle cx="18.6" cy="8.6" r="1.5"/>
+			</g>
 		</svg>""")
 
 	@staticmethod
@@ -631,6 +682,39 @@ class Icons:
 			<path d="M12 4.5 V5.8 M12 18.2 V19.5 M4.5 12 H5.8 M18.2 12 H19.5" stroke="{Icons.GRAY}" stroke-width="1.1" stroke-linecap="round"/>
 			<path d="M12 12 V7.5 M12 12 L15.5 14" fill="none" stroke="{Icons.PRIMARY}" stroke-width="1.6" stroke-linecap="round"/>
 			<circle cx="12" cy="12" r="1.2" fill="{Icons.PRIMARY}"/>
+		</svg>""")
+
+	@staticmethod
+	def group():
+		"""The group icon: three elements, a circle, a square and a triangle, circled by a dashed line."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<circle cx="12" cy="12" r="10" fill="none" stroke="{Icons.PRIMARY}" stroke-width="1.3" stroke-dasharray="3.6 2.2"/>
+			<g fill="{Icons.PRIMARY_LIGHT}" stroke="{Icons.PRIMARY}" stroke-width="1.1" stroke-linejoin="round">
+				<circle cx="8.5" cy="9" r="2.6"/>
+				<rect x="13" y="6.4" width="5" height="5" rx="0.6"/>
+				<path d="M12 12.8 L15 17.8 H9 Z" fill="{Icons.LIGHT_RED}" stroke="{Icons.DARK_RED}"/>
+			</g>
+		</svg>""")
+
+	@staticmethod
+	def thermometer():
+		"""The thermometer icon: a glass tube with a scale and a bulb, red liquid rising from the bulb."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<path fill="{Icons.WHITE}" stroke="{Icons.PRIMARY}" stroke-width="1.1"
+				d="M9.5 4.5 A2.5 2.5 0 0 1 14.5 4.5 V14.3 A4.5 4.5 0 1 1 9.5 14.3 Z"/>
+			<path d="M12 7.5 V16" stroke="{Icons.RED}" stroke-width="2.2" stroke-linecap="round"/>
+			<circle cx="12" cy="17.8" r="2.8" fill="{Icons.RED}"/>
+			<path d="M16.5 5.5 H18.5 M16.5 8.5 H18 M16.5 11.5 H18.5" stroke="{Icons.GRAY}" stroke-width="1.1" stroke-linecap="round"/>
+		</svg>""")
+
+	@staticmethod
+	def quantity():
+		"""The quantity icon: a mathematical sum sign with a small red plus-minus sign of an uncertainty."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<path fill="none" stroke="{Icons.PRIMARY}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"
+				d="M15 4 H4 L10 12 L4 20 H15"/>
+			<path fill="none" stroke="{Icons.RED}" stroke-width="1.5" stroke-linecap="round"
+				d="M19 12.5 V17.5 M16.5 15 H21.5 M16.5 20 H21.5"/>
 		</svg>""")
 
 	@staticmethod
