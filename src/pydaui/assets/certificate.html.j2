@@ -10,7 +10,7 @@
 <style>
 	@page {
 		size: A4;
-		margin: 22mm 18mm 20mm 18mm;
+		margin: 22mm 12mm 20mm 12mm;
 		@top-left {
 			content: string(lab);
 			font-size: 8pt;
@@ -93,7 +93,6 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: flex-start;
-		border-bottom: 2px solid #1a4f8b;
 		padding-bottom: 8pt;
 		margin-top: 34mm;
 	}
@@ -136,21 +135,17 @@
 	}
 	table.list th {
 		text-align: left;
-		background: #e8eef6;
+		border: 0.5pt solid #eee;
+		border-bottom: 0.75pt solid #222;
 		padding: 3pt 6pt;
 	}
 	table.list td {
-		border-bottom: 1px solid #ddd;
+		border: 0.5pt solid #eee;
 		padding: 3pt 6pt;
 		vertical-align: top;
 	}
 	table.targets {
 		font-size: 8.5pt;
-	}
-	h3 {
-		font-size: 10pt;
-		margin: 12pt 0 4pt 0;
-		break-after: avoid;
 	}
 	.result {
 		break-inside: avoid;
@@ -207,6 +202,10 @@
 	}
 	.dump.wrap {
 		white-space: normal;
+	}
+	/* The Base64 dump fills the width, broken anywhere. */
+	.dump.base64 {
+		word-break: break-all;
 	}
 	.qr {
 		text-align: center;
@@ -329,24 +328,15 @@
 {% if targets %}
 <table class="list targets">
 	<tr>
-		<th>Name</th><th>Type</th><th>Manufacturer, part number</th><th>Serial number</th><th>Measurand</th>
-		<th>Indication</th>
+		<th>#</th><th>Name</th><th>Type</th><th>Manufacturer, part number</th><th>Serial number</th>
+		<th>Measurand</th><th>Indication</th>
 	</tr>
 	{% for target in targets %}
 	<tr>
-		<td style="padding-left: {{ 6 + 10 * target.depth }}pt">
-			{% if target.n %}
-			<div>{{ target.n }}</div>
-			<div class="muted mono">{{ target.id }}</div>
-			{% else %}
-			<div class="mono">{{ target.id }}</div>
-			{% endif %}
-		</td>
+		<td class="mono" style="padding-left: {{ 6 + 10 * target.depth }}pt">{{ target.id }}</td>
+		<td>{{ target.n or '' }}</td>
 		<td>{{ target.t or '' }}</td>
-		<td>
-			{% if target.mfg %}<div>{{ target.mfg }}</div>{% endif %}
-			{% if target.pn %}<div>{{ target.pn }}</div>{% endif %}
-		</td>
+		<td>{{ [target.mfg, target.pn] | select | join(', ') }}</td>
 		<td>{{ target.sn or '' }}</td>
 		<td>{{ target.measurand or '' }}</td>
 		<td>{{ target.indication or '' }}</td>
@@ -357,10 +347,9 @@
 <p class="muted">No calibration targets are listed in the certificate.</p>
 {% endif %}
 
-<h2>Measurement results</h2>
 {% for result in results %}
 <div class="result">
-	<h3>Result group {{ result.index }}{% if result.desc %} — {{ result.desc }}{% endif %}</h3>
+	<h2>Result group {{ result.index }}{% if result.desc %} — {{ result.desc }}{% endif %}</h2>
 	<table class="fields">
 		<tr><th>Target</th><td>{{ result.target or '—' }}</td></tr>
 		{% if result.cfg %}<tr><th>Configuration</th><td>{{ result.cfg }}</td></tr>{% endif %}
@@ -417,6 +406,7 @@
 	{% endif %}
 </div>
 {% else %}
+<h2>Measurement results</h2>
 <p class="muted">No measurement results are listed in the certificate.</p>
 {% endfor %}
 
@@ -426,7 +416,7 @@
 		The digital certificate, CBOR calibration certificate format version {{ version }}, {{ size }} bytes,
 		encoded in Base64. The same bytes are encoded in the QR code below.
 	</p>
-	<div class="dump mono">{{ base64 | join('\n') }}</div>
+	<div class="dump wrap base64 mono">{{ base64 }}</div>
 
 	<div class="qr">
 		{% if qr %}

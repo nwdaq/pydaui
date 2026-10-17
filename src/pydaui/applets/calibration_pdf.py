@@ -33,9 +33,6 @@ from pydaui.ui.plot import GRAPH_COLORS
 #: The default template of the document.
 TEMPLATE = Path(__file__).resolve().parent.parent / 'assets' / 'certificate.html.j2'
 
-#: The characters per line of the Base64 dump, as in MIME.
-BASE64_LINE = 76
-
 #: The checksum of the certificate bytes shown in the document.
 CHECKSUM_ALGORITHM = 'BLAKE2s-256'
 
@@ -62,12 +59,6 @@ def checksum(data):
 def group_hex(text, size=8):
 	"""The hex ``text`` in groups of ``size`` characters separated by spaces, to be read aloud or typed."""
 	return ' '.join(text[i:i + size] for i in range(0, len(text), size))
-
-
-def base64_lines(data):
-	"""``data`` in Base64 as lines of :data:`BASE64_LINE` characters."""
-	text = base64.b64encode(data).decode('ascii')
-	return [text[i:i + BASE64_LINE] for i in range(0, len(text), BASE64_LINE)]
 
 
 def qr_code(data):
@@ -448,7 +439,7 @@ def context(certificate, data, version):
 	  as ``(name, value)``, its centering offset ``x0`` (``None`` if absent), the ``residuals`` at the points
 	  and the ``graph`` of it and the points as an SVG data URI (``None`` if they cannot be computed)
 	- ``version``, ``size``: the format version and the size of the encoded certificate in bytes
-	- ``base64``: the lines of the Base64 dump, ``qr``: the QR code as a data URI, ``None`` if too large
+	- ``base64``: the certificate in Base64, ``qr``: the QR code as a data URI, ``None`` if too large
 	- ``checksum``, ``checksum_algorithm``: the checksum of the encoded certificate in groups of hex digits
 	- ``signed``, ``signing``: whether the certificate is signed and the signing entities as ``(role, name,
 	  method)``, ``signatures``: the bytes of the signatures in groups of hex digits
@@ -480,7 +471,7 @@ def context(certificate, data, version):
 		'results': _results(certificate),
 		'version': version,
 		'size': len(data),
-		'base64': base64_lines(data),
+		'base64': base64.b64encode(data).decode('ascii'),
 		'qr': qr_code(data),
 		'checksum': group_hex(checksum(data)),
 		'checksum_algorithm': CHECKSUM_ALGORITHM,
