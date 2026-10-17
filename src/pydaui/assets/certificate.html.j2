@@ -155,6 +155,9 @@
 	.result {
 		break-inside: avoid;
 	}
+	table.points {
+		margin-top: 12pt;
+	}
 	table.points th {
 		font-weight: normal;
 		vertical-align: bottom;
@@ -170,6 +173,25 @@
 	}
 	tr {
 		break-inside: avoid;
+	}
+
+	/* The compensation model of a result group, its constants and its graph. */
+	.model {
+		break-inside: avoid;
+	}
+	h4 {
+		font-size: 9.5pt;
+		margin: 16pt 0 4pt 0;
+	}
+	.model .coefficients td {
+		padding: 1pt 10pt 1pt 0;
+	}
+	.model .graph {
+		text-align: center;
+		margin-top: 6pt;
+	}
+	.model .graph img {
+		width: 100%;
 	}
 
 	.data {
@@ -369,6 +391,29 @@
 		</tr>
 		{% endfor %}
 	</table>
+	{% endif %}
+	{% if result.model %}
+	<div class="model">
+		<h4>Compensation model</h4>
+		<table class="fields">
+			<tr><th>Model</th><td class="mono">{{ result.model.formula }}</td></tr>
+			{% if result.model.x0 %}<tr><th>Centering offset (x0)</th><td class="mono">{{ result.model.x0 }}</td></tr>{% endif %}
+			<tr>
+				<th>Coefficients of p</th>
+				<td>
+					<table class="coefficients">
+						{% for name, value in result.model.coefficients %}
+						<tr><td class="mono">{{ name }}</td><td class="mono">{{ value }}</td></tr>
+						{% endfor %}
+					</table>
+				</td>
+			</tr>
+			{% if result.model.residuals %}<tr><th>Residuals at the points</th><td>{{ result.model.residuals }}</td></tr>{% endif %}
+		</table>
+		{% if result.model.graph %}
+		<div class="graph"><img src="{{ result.model.graph }}" alt="Graph of the compensation model"></div>
+		{% endif %}
+	</div>
 	{% endif %}
 </div>
 {% else %}
