@@ -611,15 +611,10 @@ class ConnectWindow(AppletWindow):
 		self._createUi()
 
 		self._connection.connectionChanged.connect(self._connectionChanged)
-		self._connection.connectFailed.connect(self._connectFailed)
 
 	def _createUi(self):
 		self.setWindowTitle(self.tr('Connect'))
 		self.setWindowIcon(Icons.device())
-
-		# Why the last connection attempt failed, hidden until one fails.
-		self._error = Admonition('', Admonition.WARN)
-		self._error.hide()
 
 		self._tabs = QTabWidget()
 		self._tabs.setTabPosition(QTabWidget.North)
@@ -646,7 +641,6 @@ class ConnectWindow(AppletWindow):
 
 		content = QVBoxLayout()
 		content.setContentsMargins(9, 9, 9, 9)
-		content.addWidget(self._error)
 		content.addWidget(self._tabs, stretch=1)
 
 		layout = QVBoxLayout()
@@ -663,18 +657,12 @@ class ConnectWindow(AppletWindow):
 	def _exitClicked(self):
 		QApplication.quit()
 
-	def showError(self, text):
-		"""Show ``text`` as the reason the last connection attempt failed."""
-		self._error.setText(text)
-		self._error.show()
-
 	@Slot()
 	def _connectClicked(self):
 		uri = self._tabs.currentWidget().widget().uri()
 		if not uri:
 			return
-		self._error.hide()
-		# The connecting window shows instead, this one opens again when connecting fails or is cancelled.
+		# The connecting window shows instead, this one opens again when connecting is cancelled.
 		area = self.mdiArea()
 		self._dismiss()
 		ConnectingWindow.start(self._connection, uri, area)
@@ -699,28 +687,24 @@ class ConnectWindow(AppletWindow):
 		if uri and self.isVisible():
 			self._dismiss()
 
-	@Slot(str, str)
-	def _connectFailed(self, uri, message):
-		self.showError('Connecting to %s failed: %s' % (describeUri(uri), message))
-		# Right away when the connection made on startup failed, not on the next check.
-		if not self.isVisible():
-			self.showCentered()
-
 	@Slot()
 	def _checkTimerTimeout(self):
-		# Not while connecting, the connection is either made or this window shows why it failed.
-		if not self._connection.connected and not self._connection.connecting and not self.isVisible():
+		# Not while the connecting window shows, the connection is either made or cancelled there.
+		if not self._connection.connected and not ConnectingWindow.shown and not self.isVisible():
 			self.showCentered()
 
 
 class ConnectingWindow(AppletWindow):
-	"""A spinner and the device being connected, on top of the applets in the MDI area, with a Cancel button. Closes
-	when the connection is made, fails or is cancelled."""
+	"""The device being connected, on top of the applets in the MDI area, with a Cancel button. Closes when the
+	connection is made or cancelled. When it fails, the window stays showing why, Reconnect tries the same URI
+	again."""
 
 	LAYER = AppletWindow.CONNECT
 	#: Small, kept in sight above the others.
 	MAXIMIZE = False
 	ON_TOP = True
+	#: The windows open, the connect window stays hidden meanwhile.
+	shown = set()
 
 	def __init__(self, connection, uri, parent=None):
 		super().__init__(parent=parent)
@@ -731,34 +715,44 @@ class ConnectingWindow(AppletWindow):
 		self.setWindowIcon(Icons.device())
 		self._connection = connection
 		self._connection.connectionChanged.connect(self._done)
-		self._connection.connectFailed.connect(self._done)
-		# Whether the connection was made or failed, closing the window cancels it otherwise.
-		self._finished = False
+		self._connection.connectFailed.connect(self._failed)
+		self._uri = uri
+		# Whether connecting is in progress, closing the window cancels it then.
+		self._connecting = False
 
-		label = QLabel(self.tr('Connecting to<br/><b>%s</b>...') % html.escape(describeUri(uri)))
+		self._label = QLabel(self.tr('Connecting to<br/><b>%s</b>...') % html.escape(describeUri(uri)))
+		# Why connecting failed, hidden until it fails.
+		self._error = Admonition('', Admonition.WARN)
+		self._error.hide()
 
-		row = QHBoxLayout()
-		row.setContentsMargins(9, 9, 9, 9)
-		row.addWidget(label, 1)
+		content = QVBoxLayout()
+		content.setContentsMargins(9, 9, 9, 9)
+		content.addWidget(self._label)
+		content.addWidget(self._error)
 
 		cancel = DauiButton(self.tr('&Cancel'), Icons.cancel())
 		cancel.clicked.connect(self.close)
+
+		self._reconnect_btn = DauiButton(self.tr('&Reconnect'), Icons.refresh())
+		self._reconnect_btn.clicked.connect(self._connect)
+		self._reconnect_btn.setEnabled(False)
 
 		self._tb = QToolBar()
 		spacer = QWidget()
 		spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
 		self._tb.addWidget(spacer)
 		self._tb.addWidget(cancel)
+		self._tb.addWidget(self._reconnect_btn)
 
 		layout = QVBoxLayout()
 		layout.setContentsMargins(0, 0, 0, 0)
 		layout.setSpacing(0)
-		layout.addLayout(row, stretch=1)
+		layout.addLayout(content, stretch=1)
 		layout.addWidget(self._tb)
 
 		widget = QWidget()
 		widget.setLayout(layout)
-		widget.setMinimumWidth(360)
+		widget.setMinimumWidth(480)
 		self.setWidget(widget)
 
 	@classmethod
@@ -767,18 +761,47 @@ class ConnectingWindow(AppletWindow):
 		meanwhile. Connecting may take a while (e.g. a BLE device connects and its interfaces are walked)."""
 		window = cls(connection, uri)
 		area.addSubWindow(window)
+		cls.shown.add(window)
 		window.showCentered()
-		connection.connectUriAsync(uri)
+		window._connect()
 		return window
 
 	@Slot()
+	def _connect(self):
+		self.setWindowTitle(self.tr('Connecting'))
+		self._error.hide()
+		self._label.show()
+		self._reconnect_btn.setEnabled(False)
+		self._fit()
+		self._connecting = True
+		self._connection.connectUriAsync(self._uri)
+
+	def _fit(self):
+		"""Fit the window to the text it shows now, the error is taller than the connecting label."""
+		self.widget().layout().activate()
+		self.showCentered()
+
+	@Slot()
 	def _done(self):
-		self._finished = True
+		self._connecting = False
 		self.close()
+
+	@Slot(str, str)
+	def _failed(self, uri, message):
+		self._connecting = False
+		self.setWindowTitle(self.tr('Connection failed'))
+		self._label.hide()
+		self._error.setText(self.tr('Connecting to <b>%s</b> failed: %s')
+		                    % (html.escape(describeUri(uri)), html.escape(message)))
+		self._error.show()
+		self._fit()
+		self._reconnect_btn.setEnabled(True)
+		self._reconnect_btn.setFocus()
 
 	def closeEvent(self, event):
 		self._connection.connectionChanged.disconnect(self._done)
-		self._connection.connectFailed.disconnect(self._done)
-		if not self._finished:
+		self._connection.connectFailed.disconnect(self._failed)
+		if self._connecting:
 			self._connection.cancelConnect()
+		ConnectingWindow.shown.discard(self)
 		super().closeEvent(event)
