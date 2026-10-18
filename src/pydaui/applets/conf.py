@@ -45,7 +45,7 @@ CONF_ENUM = 12
 TYPE_NAMES = {
 	CONF_NONE: 'none',
 	CONF_SUBTREE: 'subtree',
-	CONF_F: 'f',
+	CONF_F: 'float',
 	CONF_U32: 'u32',
 	CONF_S32: 's32',
 	CONF_U16: 'u16',
