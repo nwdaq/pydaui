@@ -542,16 +542,81 @@ class BoolEditor(QFrame):
 		return False
 
 
+class EnumEditor(QComboBox):
+	"""The drop-down list of the value names of an enum value in the tree, a choice is written right away
+	(``commit``). It has the signals and methods of :class:`TextEditor`, its text is the name of the value."""
+
+	idle = Signal()
+	commit = Signal()
+	cancel = Signal()
+	focusLost = Signal(bool)
+	navigate = Signal(int)
+	textChanged = Signal(str)
+
+	def __init__(self, text, names):
+		super().__init__()
+		self.addItems(names)
+		self.setText(text)
+		self.activated.connect(self._activated)
+
+	def text(self):
+		return self.currentText()
+
+	def setText(self, text):
+		# A value without a name selects none, its empty text is not a valid value to write back.
+		self.blockSignals(True)
+		self.setCurrentIndex(self.findText(text))
+		self.blockSignals(False)
+
+	def setValid(self, valid):
+		# Only the valid values can be chosen.
+		pass
+
+	def stopIdleTimer(self):
+		pass
+
+	def begin(self):
+		self.setFocus(Qt.OtherFocusReason)
+
+	@Slot(int)
+	def _activated(self, index):
+		self.textChanged.emit(self.text())
+		self.commit.emit()
+
+	def keyPressEvent(self, event):
+		key = event.key()
+		if key == Qt.Key_Escape:
+			self.cancel.emit()
+		elif key in (Qt.Key_Up, Qt.Key_Down) and not event.modifiers() & Qt.AltModifier:
+			# Alt+Down opens the list, as Space does.
+			self.navigate.emit(-1 if key == Qt.Key_Up else 1)
+		else:
+			super().keyPressEvent(event)
+
+	def wheelEvent(self, event):
+		# Scrolling the tree over the editor does not change the value.
+		event.ignore()
+
+	def focusOutEvent(self, event):
+		super().focusOutEvent(event)
+		# The list takes the focus when opened, not as a popup focus change.
+		popup = self.view().isVisible()
+		self.focusLost.emit(not popup and event.reason() not in (Qt.ActiveWindowFocusReason, Qt.PopupFocusReason))
+
+
 #: The editors of the conf types with their own, the others are edited as text.
 EDITORS = {
 	CONF_B: BoolEditor,
 }
 
 
-def create_editor(type_int, text):
-	"""The editor of a value of the conf type ``type_int`` showing ``text``. Every editor has the signals and
-	methods of :class:`TextEditor` the tree uses: ``idle``, ``commit``, ``cancel``, ``focusLost``, ``navigate``,
-	``textChanged``, ``text()``, ``setText()``, ``setValid()``, ``stopIdleTimer()`` and ``begin()``."""
+def create_editor(type_int, text, names=None):
+	"""The editor of a value of the conf type ``type_int`` showing ``text``, ``names`` are the value names of
+	an enum, without them it is edited as text. Every editor has the signals and methods of :class:`TextEditor`
+	the tree uses: ``idle``, ``commit``, ``cancel``, ``focusLost``, ``navigate``, ``textChanged``, ``text()``,
+	``setText()``, ``setValid()``, ``stopIdleTimer()`` and ``begin()``."""
+	if type_int == CONF_ENUM:
+		return EnumEditor(text, names) if names else TextEditor(text)
 	return EDITORS.get(type_int, TextEditor)(text)
 
 
@@ -898,7 +963,7 @@ class ConfTreeWidget(GuideTreeWidget):
 			return
 
 		text = item.text(self.VALUE_COLUMN)
-		editor = create_editor(item.data(0, self.TYPE_ROLE), text)
+		editor = create_editor(item.data(0, self.TYPE_ROLE), text, self._conf.enum_names(item.data(0, self.PATH_ROLE)))
 		editor.setFont(item.font(self.VALUE_COLUMN))
 		editor.idle.connect(lambda: self._writeEdited(close=False))
 		editor.commit.connect(lambda: self._writeEdited(close=False))
