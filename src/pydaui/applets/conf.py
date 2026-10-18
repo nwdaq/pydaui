@@ -125,6 +125,13 @@ class ConfClient:
 		Without ``timeout`` the retransmit interval suits the transport, e.g. a BLE link is much slower
 		than UDP.
 		"""
+		try:
+			return self.request(req, timeout, retries)
+		except TimeoutError:
+			return None
+
+	def request(self, req: dict, timeout=None, retries=None):
+		"""Like :meth:`call`, but raises ``TimeoutError`` when the device does not respond at all."""
 		with self._lock:
 			sock = self._connection.socket
 			if sock is None:
@@ -132,7 +139,7 @@ class ConfClient:
 			reply = sock.request(cbor2.dumps(req), timeout=timeout or sock.request_timeout,
 			                     retries=retries or self.RETRIES)
 		if reply is None:
-			return None
+			raise TimeoutError('no response')
 		try:
 			return cbor2.loads(reply)
 		except Exception:
@@ -149,8 +156,9 @@ class ConfClient:
 			raise ValueError(r.get('err', 'unknown error'))
 		return r.get('nodes', [])
 
-	def _read(self, path):
-		r = self.call({'c': 'read', 'p': path})
+	def _read(self, path, strict=False, retries=None):
+		req = {'c': 'read', 'p': path}
+		r = self.request(req, retries=retries) if strict else self.call(req, retries=retries)
 		if r is None or r.get('err'):
 			return None
 		return r.get('val')
@@ -208,9 +216,10 @@ class ConfClient:
 			})
 		return nodes
 
-	def read(self, path):
-		"""Read the value of the node at path formatted for display, or ``None`` if it cannot be read."""
-		val = self._read(path)
+	def read(self, path, strict=False, retries=None):
+		"""Read the value of the node at path formatted for display, or ``None`` if it cannot be read. When
+		``strict``, raises ``TimeoutError`` if the device does not respond to any of the ``retries``."""
+		val = self._read(path, strict, retries)
 		return None if val is None else self._fmt_value(val)
 
 	@staticmethod
@@ -260,12 +269,13 @@ class ConfClient:
 			raise ValueError(r.get('err'))
 
 
-def read_values(connection, interface, paths):
+def read_values(connection, interface, paths, retries=None):
 	"""The values of the conf nodes at ``paths`` (lists of names) on the conf ``interface`` of the
 	``connection``, formatted for display, ``None`` for a node which cannot be read. It asks the device over
-	the shared side connection to the interface, run it off the GUI thread."""
+	the shared side connection to the interface, run it off the GUI thread. Raises ``TimeoutError`` when the
+	device does not respond to any of the ``retries`` of a read, :attr:`ConfClient.RETRIES` by default."""
 	client = ConfClient(connection.sharedSide(interface))
-	return [client.read(path) for path in paths]
+	return [client.read(path, strict=True, retries=retries) for path in paths]
 
 
 #: The conf types which can be edited as text.

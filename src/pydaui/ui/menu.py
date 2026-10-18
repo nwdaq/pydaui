@@ -66,7 +66,8 @@ def format_uptime(seconds):
 class DeviceStatus(QWidget):
 	"""The heap usage and the uptime of the connected device, each with its icon, read from its
 	configuration tree every :attr:`INTERVAL`. :attr:`available` tells whether there is a status to show,
-	there is none when the device has no configuration tree."""
+	there is none when the device has no configuration tree. A device which does not respond to a read, sent
+	once without retransmitting, or whose transport fails is dropped, see :meth:`PyDauiConnection.drop`."""
 
 	#: How often the status is read, in milliseconds.
 	INTERVAL = 5000
@@ -81,6 +82,8 @@ class DeviceStatus(QWidget):
 
 	#: Delivers the (uri, values of PATHS) read off the GUI thread.
 	_read = Signal(str, list)
+	#: Delivers the uri of the device the read failed on.
+	_failed = Signal(str)
 
 	def __init__(self, connection):
 		super().__init__()
@@ -104,6 +107,7 @@ class DeviceStatus(QWidget):
 		self._timer.setInterval(self.INTERVAL)
 		self._timer.timeout.connect(self._poll)
 		self._read.connect(self._show)
+		self._failed.connect(self._drop)
 		connection.connectionChanged.connect(self._connectionChanged)
 
 	def start(self):
@@ -133,13 +137,23 @@ class DeviceStatus(QWidget):
 
 		def read():
 			try:
-				values = conf.read_values(self._connection, interface, self.PATHS)
+				values = conf.read_values(self._connection, interface, self.PATHS, retries=1)
 			except Exception as e:
-				self._logger.debug(f'cannot read the device status: {e}')
-				values = [None] * len(self.PATHS)
+				# A timeout, or the transport failing, e.g. the session closed by the device or its BLE link lost.
+				# A node which cannot be read is None instead.
+				self._logger.warning(f'cannot read the device status: {e!r}')
+				self._failed.emit(uri)
+				return
 			self._read.emit(uri, values)
 
 		threading.Thread(target=read, name='device-status', daemon=True).start()
+
+	@Slot(str)
+	def _drop(self, uri):
+		self._reading = False
+		# Not for an earlier connection.
+		if uri == self._connection.uri:
+			self._connection.drop()
 
 	@Slot(str, list)
 	def _show(self, uri, values):

@@ -321,6 +321,7 @@ class DauiApplication(QApplication):
 		self._main_window.addWindow(self._connect_window)
 
 		self._connection.connectionChanged.connect(self._connectionChanged)
+		self._connection.connectionLost.connect(self._reconnect)
 		# After the main window is shown, before the connect window opens.
 		QTimer.singleShot(0, self._autoConnect)
 
@@ -339,6 +340,13 @@ class DauiApplication(QApplication):
 		if not self._settings.get(DeviceSection.AUTO_CONNECT, False) or not uri or self._connection.connected:
 			return
 		ConnectingWindow.start(self._connection, uri, self._connect_window.mdiArea())
+
+	@Slot(str)
+	def _reconnect(self, uri):
+		"""Connect the device which stopped responding again, showing the connecting window. The connect
+		window opens when it fails or is cancelled."""
+		# Not the area of the connect window, it is taken out of it while hidden.
+		ConnectingWindow.start(self._connection, uri, self._main_window.centralWidget())
 
 	def exec(self):
 		super().exec()

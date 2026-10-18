@@ -40,6 +40,9 @@ class PyDauiConnection(QObject):
 	connectionChanged = Signal(object)
 	#: (uri, error message) when :meth:`connectUriAsync` fails.
 	connectFailed = Signal(str, str)
+	#: (uri) when the device stopped responding and was disconnected with :meth:`drop`, after
+	#: :attr:`connectionChanged`.
+	connectionLost = Signal(str)
 	#: Delivers the (attempt, uri, result) of the thread of :meth:`connectUriAsync` to the GUI thread.
 	_opened = Signal(object, str, object)
 
@@ -185,6 +188,16 @@ class PyDauiConnection(QObject):
 		self._interfaces = []
 		self._shared = {}
 		self.connectionChanged.emit(None)
+
+	def drop(self):
+		"""Disconnect the device which stopped responding, whichever transport it is connected over, and
+		emit :attr:`connectionLost` so it can be connected again."""
+		uri = self._uri
+		if uri is None:
+			return
+		self._logger.warning(f'{uri} stopped responding')
+		self.disconnectUri()
+		self.connectionLost.emit(uri)
 
 	def connectSide(self, id, ep):
 		"""Open a side connection to a different service (id, ep) on the same target this connection
