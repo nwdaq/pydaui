@@ -466,6 +466,11 @@ class StyledTreeWidget(QTreeWidget):
 		self.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
 		self.setStyleSheet(self.STYLE)
 
+	def detailHeight(self, index):
+		"""The height of a detail line spanning the columns below the cells of the row at ``index``, the column
+		lines do not cross it. None by default."""
+		return 0
+
 	def styleName(self, item):
 		"""Show the first column of ``item`` as a name."""
 		font = item.font(0)
@@ -482,11 +487,12 @@ class StyledTreeWidget(QTreeWidget):
 		header = self.header()
 		painter.save()
 		painter.setPen(QPen(QColor(self.COLUMN_LINE_COLOR), 1))
+		bottom = option.rect.bottom() - self.detailHeight(index)
 		for column in range(header.count() - 1):
 			if header.isSectionHidden(column):
 				continue
 			x = header.sectionViewportPosition(column) + header.sectionSize(column) - 1
-			painter.drawLine(x, option.rect.top(), x, option.rect.bottom())
+			painter.drawLine(x, option.rect.top(), x, bottom)
 		painter.restore()
 
 	def mouseMoveEvent(self, event):

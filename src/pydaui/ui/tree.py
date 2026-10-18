@@ -60,7 +60,8 @@ class GuideTreeWidget(StyledTreeWidget):
 		step = self.indentation()
 		left = rect.right() + 1 - step
 		cx = left + step // 2
-		cy = rect.top() + rect.height() // 2
+		# Centered on the cells, not on the detail line below them.
+		cy = rect.top() + (rect.height() - self.detailHeight(index)) // 2
 
 		# Guide lines: a vertical line through the levels which continue below this row and a short
 		# horizontal leaf to the item.
@@ -99,7 +100,7 @@ class GuideTreeWidget(StyledTreeWidget):
 		rect = self.visualRect(index.siblingAtColumn(0))
 		step = self.indentation()
 		cx = rect.left() - step + step // 2
-		cy = rect.top() + rect.height() // 2
+		cy = rect.top() + (rect.height() - self.detailHeight(index)) // 2
 		return self._indicator_rect(cx, cy).adjusted(-2, -2, 2, 2).contains(pos)
 
 	def mouseMoveEvent(self, event):

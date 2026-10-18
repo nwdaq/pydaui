@@ -416,18 +416,45 @@ class ValueEditor(QLineEdit):
 		self.focusLost.emit(event.reason() not in (Qt.ActiveWindowFocusReason, Qt.PopupFocusReason))
 
 
-class _ValueDelegate(QStyledItemDelegate):
-	"""Delegate of the Value column: places the value editor over the whole cell and hides the text of the
-	cell being edited, which would show through around the editor."""
+class _RowDelegate(QStyledItemDelegate):
+	"""Delegate of the tree cells: makes the rows with a detail line taller, keeping the cell texts on the
+	first line, see :meth:`ConfTreeWidget.detailHeight`."""
 
 	def __init__(self, tree):
 		super().__init__(tree)
 		self._tree = tree
 
+	def sizeHint(self, option, index):
+		size = super().sizeHint(option, index)
+		size.setHeight(size.height() + self._tree.detailHeight(index))
+		return size
+
+	def paint(self, painter, option, index):
+		height = self._tree.detailHeight(index)
+		if not height:
+			super().paint(painter, option, index)
+			return
+		# The background (e.g. of a selected row) over the whole cell, the cell itself above the detail line.
+		background = QStyleOptionViewItem(option)
+		self.initStyleOption(background, index)
+		background.text = ''
+		style = option.widget.style() if option.widget is not None else QApplication.style()
+		style.drawPrimitive(QStyle.PE_PanelItemViewItem, background, painter, option.widget)
+		cell = QStyleOptionViewItem(option)
+		cell.rect = QRect(option.rect.left(), option.rect.top(), option.rect.width(), option.rect.height() - height)
+		super().paint(painter, cell, index)
+
+
+class _ValueDelegate(_RowDelegate):
+	"""Delegate of the Value column: places the value editor over the whole cell and hides the text of the
+	cell being edited, which would show through around the editor."""
+
 	def updateEditorGeometry(self, editor, option, index):
 		# The default places the editor in the text area, which the item padding squeezes. The editor
-		# covers the whole cell instead.
-		editor.setGeometry(option.rect)
+		# covers the whole cell instead, without the detail line below it.
+		rect = QRect(option.rect)
+		rect.setHeight(rect.height() - self._tree.detailHeight(index))
+		editor.setGeometry(rect)
 
 	def initStyleOption(self, option, index):
 		super().initStyleOption(option, index)
@@ -477,6 +504,9 @@ class ConfTreeWidget(GuideTreeWidget):
 	TYPE_ROLE = Qt.UserRole + 3
 	FLAGS_ROLE = Qt.UserRole + 4
 
+	#: The full description of a node, empty if it has none.
+	DETAIL_ROLE = Qt.UserRole + 5
+
 	#: The column of the flags, of the values and their editor, and of the brief descriptions.
 	FLAGS_COLUMN = 2
 	VALUE_COLUMN = 3
@@ -485,8 +515,23 @@ class ConfTreeWidget(GuideTreeWidget):
 	#: Colour of the flags.
 	FLAGS_COLOR = '#999'
 
-	#: Colour of the brief descriptions, not to dominate over the values.
+	#: Colour of the brief and the full descriptions, not to dominate over the values.
 	BRIEF_COLOR = '#444'
+	DETAIL_COLOR = '#444'
+
+	#: The horizontal padding of the full description bubble, where the cells draw their texts, and its
+	#: padding above (below the bottom padding of the cells) and below.
+	DETAIL_HPADDING = 4
+	DETAIL_TOP_PADDING = 2
+	DETAIL_BOTTOM_PADDING = 9
+
+	#: The look of the bubble, of a note Admonition: its background, border, corner radius, the size of its
+	#: icon and its padding around the icon and the text.
+	DETAIL_BACKGROUND = '#fff'
+	DETAIL_BORDER = '#008'
+	DETAIL_RADIUS = 5
+	DETAIL_ICON_SIZE = 20
+	DETAIL_MARGIN = 8
 
 	#: Colour of a value whose last write failed.
 	WRITE_FAILED_COLOR = '#c0392b'
@@ -509,12 +554,17 @@ class ConfTreeWidget(GuideTreeWidget):
 		self._edit_base = None
 		# The lowercase filter text, empty when not filtering.
 		self._filter = ''
+		# Whether the full descriptions are shown below the nodes.
+		self._details = False
+		self._detail_icon = Icons.about()
 
 		self.setColumnCount(5)
 		self.setHeaderLabels(['Name', 'Type', 'Flags', 'Value', 'Brief description'])
 		self.itemExpanded.connect(self._on_expanded)
 		# The value of the current row is edited in place; a click on the current row reopens a closed editor.
 		self.setEditTriggers(QAbstractItemView.NoEditTriggers)
+		self._row_delegate = _RowDelegate(self)
+		self.setItemDelegate(self._row_delegate)
 		self._value_delegate = _ValueDelegate(self)
 		self.setItemDelegateForColumn(self.VALUE_COLUMN, self._value_delegate)
 		self.currentItemChanged.connect(lambda current, previous: self._openEditor(current))
@@ -559,6 +609,7 @@ class ConfTreeWidget(GuideTreeWidget):
 			item.setData(0, self.PATH_ROLE, node['path'])
 			item.setData(0, self.TYPE_ROLE, node['type'])
 			item.setData(0, self.FLAGS_ROLE, node['flags'])
+			item.setData(0, self.DETAIL_ROLE, node['detail'])
 			self.styleName(item)
 			if node['is_subtree']:
 				# Add a placeholder child so the expand arrow appears; the real
@@ -596,6 +647,74 @@ class ConfTreeWidget(GuideTreeWidget):
 			placeholder.setData(0, self.FAILED_ROLE, True)
 		except RuntimeError:
 			pass
+
+	def setShowDetails(self, show):
+		"""Show the full description of each node below it, word-wrapped across all the columns."""
+		self._details = show
+		# The row heights change.
+		self.scheduleDelayedItemsLayout()
+
+	def _detailRect(self, index):
+		"""The left and the width of the full description bubble of the node at ``index``, aligned with its
+		name."""
+		depth = 0
+		parent = index.parent()
+		while parent.isValid():
+			depth, parent = depth + 1, parent.parent()
+		indent = self.indentation() * (depth + (1 if self.rootIsDecorated() else 0))
+		left = self.header().sectionViewportPosition(0) + indent + self.DETAIL_HPADDING
+		return left, max(self.viewport().width() - self.DETAIL_HPADDING - left, 1)
+
+	def detailHeight(self, index):
+		if not self._details or not index.isValid():
+			return 0
+		detail = index.siblingAtColumn(0).data(self.DETAIL_ROLE)
+		if not detail:
+			return 0
+		bubble = self._detailTextHeight(index, detail) + 2 * self.DETAIL_MARGIN
+		return self.DETAIL_TOP_PADDING + max(bubble, self.DETAIL_ICON_SIZE + 2 * self.DETAIL_MARGIN) + \
+		       self.DETAIL_BOTTOM_PADDING
+
+	def _detailTextWidth(self, index):
+		"""The width of the text in the bubble, right of the icon."""
+		left, width = self._detailRect(index)
+		return max(width - self.DETAIL_ICON_SIZE - 3 * self.DETAIL_MARGIN, 1)
+
+	def _detailTextHeight(self, index, detail):
+		rect = QRect(0, 0, self._detailTextWidth(index), 100000)
+		return self.fontMetrics().boundingRect(rect, Qt.TextWordWrap, detail).height()
+
+	def drawRow(self, painter, option, index):
+		super().drawRow(painter, option, index)
+		height = self.detailHeight(index)
+		if not height:
+			return
+		left, width = self._detailRect(index)
+		bubble = QRect(left, option.rect.bottom() + 1 - height + self.DETAIL_TOP_PADDING,
+		               width, height - self.DETAIL_TOP_PADDING - self.DETAIL_BOTTOM_PADDING)
+		painter.save()
+		painter.setRenderHint(QPainter.Antialiasing)
+		painter.setPen(QPen(QColor(self.DETAIL_BORDER), 1))
+		painter.setBrush(QColor(self.DETAIL_BACKGROUND))
+		# On the pixel centres, the border is sharp.
+		painter.drawRoundedRect(QRectF(bubble).adjusted(0.5, 0.5, -0.5, -0.5), self.DETAIL_RADIUS, self.DETAIL_RADIUS)
+		# The icon centred vertically, as in an Admonition.
+		size = self.DETAIL_ICON_SIZE
+		self._detail_icon.paint(painter, QRect(bubble.left() + self.DETAIL_MARGIN,
+		                                       bubble.top() + (bubble.height() - size) // 2, size, size))
+		text_left = bubble.left() + 2 * self.DETAIL_MARGIN + size
+		painter.setFont(self.font())
+		painter.setPen(QColor(self.DETAIL_COLOR))
+		painter.drawText(QRect(text_left, bubble.top() + self.DETAIL_MARGIN, self._detailTextWidth(index),
+		                       bubble.height() - 2 * self.DETAIL_MARGIN),
+		                 Qt.TextWordWrap | Qt.AlignVCenter, index.siblingAtColumn(0).data(self.DETAIL_ROLE))
+		painter.restore()
+
+	def resizeEvent(self, event):
+		super().resizeEvent(event)
+		if self._details:
+			# The full descriptions wrap to the new width.
+			self.scheduleDelayedItemsLayout()
 
 	def isEditing(self, index):
 		"""Whether the value at ``index`` is being edited."""
@@ -801,6 +920,13 @@ class ConfTree(QWidget):
 		self._save.setToolTip(self.tr('Save the configuration on the device'))
 		self._save.clicked.connect(lambda: self._runJob('save'))
 		self._tb.addWidget(self._save)
+
+		self._details = QCheckBox(self.tr('Show details'))
+		self._details.setToolTip(self.tr('Show the full description of each configuration item below it'))
+		# Spaced from the buttons like the filter label.
+		self._details.setContentsMargins(6, 0, 0, 0)
+		self._details.toggled.connect(self._tree.setShowDetails)
+		self._tb.addWidget(self._details)
 
 		spacer = QWidget()
 		spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
