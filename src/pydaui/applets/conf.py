@@ -183,6 +183,13 @@ class ConfClient:
 			return []
 		return first + self._next_siblings(path + [first[0]['n']])
 
+	def description(self, path):
+		"""The (brief, detail) help strings of the node at path, ``None`` for the ones it has not."""
+		r = self.call({'c': 'get_desc', 'p': path})
+		if r is None or r.get('err'):
+			return None, None
+		return r.get('brief'), r.get('detail')
+
 	def _fmt_value(self, val):
 		if isinstance(val, bytes):
 			return val.hex()
@@ -190,7 +197,8 @@ class ConfClient:
 
 	def children(self, path=None):
 		"""Return a single level of children of the node at path as a list of dicts:
-		{'name', 'type', 'flags', 'value', 'is_subtree', 'path'}. Leaf values are read here;
+		{'name', 'type', 'flags', 'value', 'is_subtree', 'path', 'brief', 'detail'}. Leaf values and the help
+		strings of all the nodes are read here;
 		subtrees are not descended into (lazy loading is up to the caller)."""
 		path = path or []
 		nodes = []
@@ -205,6 +213,7 @@ class ConfClient:
 				val = self._read(child_path)
 				if val is not None:
 					value = self._fmt_value(val)
+			brief, detail = self.description(child_path)
 
 			nodes.append({
 				'name': name,
@@ -213,6 +222,8 @@ class ConfClient:
 				'value': value,
 				'is_subtree': is_subtree,
 				'path': child_path,
+				'brief': brief or '',
+				'detail': detail or '',
 			})
 		return nodes
 
@@ -466,18 +477,23 @@ class ConfTreeWidget(GuideTreeWidget):
 	TYPE_ROLE = Qt.UserRole + 3
 	FLAGS_ROLE = Qt.UserRole + 4
 
-	#: The column of the flags, and of the values and their editor.
+	#: The column of the flags, of the values and their editor, and of the brief descriptions.
 	FLAGS_COLUMN = 2
 	VALUE_COLUMN = 3
+	BRIEF_COLUMN = 4
 
 	#: Colour of the flags.
 	FLAGS_COLOR = '#999'
 
+	#: Colour of the brief descriptions, not to dominate over the values.
+	BRIEF_COLOR = '#444'
+
 	#: Colour of a value whose last write failed.
 	WRITE_FAILED_COLOR = '#c0392b'
 
-	#: Relative widths of the Name, Type, Flags and Value columns, which always fill the whole width.
-	COLUMN_RATIOS = (4, 2, 3, 4)
+	#: Relative widths of the Name, Type, Flags, Value and Brief description columns, which always fill the
+	#: whole width.
+	COLUMN_RATIOS = (4, 2, 3, 4, 6)
 
 	def __init__(self, conf: ConfClient):
 		super().__init__()
@@ -494,8 +510,8 @@ class ConfTreeWidget(GuideTreeWidget):
 		# The lowercase filter text, empty when not filtering.
 		self._filter = ''
 
-		self.setColumnCount(4)
-		self.setHeaderLabels(['Name', 'Type', 'Flags', 'Value'])
+		self.setColumnCount(5)
+		self.setHeaderLabels(['Name', 'Type', 'Flags', 'Value', 'Brief description'])
 		self.itemExpanded.connect(self._on_expanded)
 		# The value of the current row is edited in place; a click on the current row reopens a closed editor.
 		self.setEditTriggers(QAbstractItemView.NoEditTriggers)
@@ -534,8 +550,12 @@ class ConfTreeWidget(GuideTreeWidget):
 				'' if node['is_subtree'] else TYPE_NAMES.get(node['type'], str(node['type'])),
 				'' if node['is_subtree'] else format_flags(node['flags']),
 				node['value'],
+				node['brief'],
 			])
 			item.setForeground(self.FLAGS_COLUMN, QColor(self.FLAGS_COLOR))
+			item.setForeground(self.BRIEF_COLUMN, QColor(self.BRIEF_COLOR))
+			# The full description, the brief one is cut to the column width.
+			item.setToolTip(self.BRIEF_COLUMN, node['detail'] or node['brief'])
 			item.setData(0, self.PATH_ROLE, node['path'])
 			item.setData(0, self.TYPE_ROLE, node['type'])
 			item.setData(0, self.FLAGS_ROLE, node['flags'])
@@ -866,7 +886,7 @@ class ConfTreeWindow(AppletWindow):
 		self.setWindowTitle(f'Configuration tree ({name})')
 		self._conf = ConfClient(self._side)
 		self.setWidget(ConfTree(self._conf))
-		self.resize(600, 500)
+		self.resize(950, 500)
 
 	@Slot(object)
 	def _connectionChanged(self, uri):
