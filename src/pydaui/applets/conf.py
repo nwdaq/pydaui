@@ -352,10 +352,11 @@ class _JobRunner(QObject):
 		self.done.emit()
 
 
-class ValueEditor(QLineEdit):
-	"""The line edit of a value in the tree. It reports when its text should be written: after
-	:attr:`IDLE_MS` without typing (``idle``), on Enter (``commit``) or when it loses the focus
-	(``focusLost``, with whether the editor should close).
+class TextEditor(QLineEdit):
+	"""The line edit of a value in the tree, the editor of the types without their own (see
+	:func:`create_editor`). It reports when its text should be written: after :attr:`IDLE_MS` without typing
+	(``idle``), on Enter (``commit``) or when it loses the focus (``focusLost``, with whether the editor should
+	close).
 	"""
 
 	#: Typing pause after which the value is written, in milliseconds.
@@ -396,6 +397,11 @@ class ValueEditor(QLineEdit):
 	def stopIdleTimer(self):
 		self._timer.stop()
 
+	def begin(self):
+		"""Take the keyboard focus to edit the value."""
+		self.setFocus(Qt.OtherFocusReason)
+		self.selectAll()
+
 	def keyPressEvent(self, event):
 		key = event.key()
 		if key in (Qt.Key_Return, Qt.Key_Enter):
@@ -414,6 +420,100 @@ class ValueEditor(QLineEdit):
 		self._timer.stop()
 		# Switching to another window or opening a popup keeps the editor, the value is written anyway.
 		self.focusLost.emit(event.reason() not in (Qt.ActiveWindowFocusReason, Qt.PopupFocusReason))
+
+
+def parse_bool(text):
+	"""The bool value ``text`` shows, ``None`` if it shows none."""
+	return ConfClient._parse_value(CONF_B, text.strip())
+
+
+class BoolEditor(QFrame):
+	"""The check box of a bool value in the tree, labelled with the value like the cell, a change is written
+	right away (``commit``). It has the signals and methods of :class:`TextEditor`, its text is the value as
+	the device formats it."""
+
+	idle = Signal()
+	commit = Signal()
+	cancel = Signal()
+	focusLost = Signal(bool)
+	navigate = Signal(int)
+	textChanged = Signal(str)
+
+	# It covers the whole cell like the line edit, the check box is where the cell draws its indicator.
+	STYLE = """
+		BoolEditor {
+			background-color: white;
+			border: 1px solid %s;
+		}
+	""" % TextEditor.BORDER
+	CHECK_LEFT = 3
+
+	def __init__(self, text):
+		super().__init__()
+		self.setStyleSheet(self.STYLE)
+		self._check = QCheckBox()
+		self._check.setChecked(bool(parse_bool(text)))
+		self._check.setText(self.text())
+		self._check.toggled.connect(self._toggled)
+		self._check.installEventFilter(self)
+		self.setFocusProxy(self._check)
+		layout = QHBoxLayout(self)
+		layout.setContentsMargins(self.CHECK_LEFT, 0, 0, 0)
+		layout.addWidget(self._check)
+
+	def text(self):
+		return str(self._check.isChecked())
+
+	def setText(self, text):
+		value = parse_bool(text)
+		if value is not None:
+			# Not written back.
+			self._check.blockSignals(True)
+			self._check.setChecked(value)
+			self._check.blockSignals(False)
+			self._check.setText(self.text())
+
+	def setValid(self, valid):
+		# Either value is valid.
+		pass
+
+	def stopIdleTimer(self):
+		pass
+
+	def begin(self):
+		self._check.setFocus(Qt.OtherFocusReason)
+
+	@Slot(bool)
+	def _toggled(self, checked):
+		self._check.setText(self.text())
+		self.textChanged.emit(self.text())
+		self.commit.emit()
+
+	def eventFilter(self, obj, event):
+		if event.type() == QEvent.KeyPress:
+			key = event.key()
+			if key == Qt.Key_Escape:
+				self.cancel.emit()
+				return True
+			if key in (Qt.Key_Up, Qt.Key_Down):
+				self.navigate.emit(-1 if key == Qt.Key_Up else 1)
+				return True
+		elif event.type() == QEvent.FocusOut:
+			self.focusLost.emit(event.reason() not in (Qt.ActiveWindowFocusReason, Qt.PopupFocusReason))
+		return False
+
+
+#: The editors of the conf types with their own, the others are edited as text.
+EDITORS = {
+	CONF_B: BoolEditor,
+}
+
+
+def create_editor(type_int, text):
+	"""The editor of a value of the conf type ``type_int`` showing ``text``. Every editor has the signals and
+	methods of :class:`TextEditor` the tree uses: ``idle``, ``commit``, ``cancel``, ``focusLost``, ``navigate``,
+	``textChanged``, ``text()``, ``setText()``, ``setValid()``, ``stopIdleTimer()`` and ``begin()``."""
+	return EDITORS.get(type_int, TextEditor)(text)
 
 
 class _RowDelegate(QStyledItemDelegate):
@@ -446,8 +546,9 @@ class _RowDelegate(QStyledItemDelegate):
 
 
 class _ValueDelegate(_RowDelegate):
-	"""Delegate of the Value column: places the value editor over the whole cell and hides the text of the
-	cell being edited, which would show through around the editor."""
+	"""Delegate of the Value column: places the value editor over the whole cell, hides the text of the
+	cell being edited, which would show through around the editor, and shows the bool values as check
+	boxes."""
 
 	def updateEditorGeometry(self, editor, option, index):
 		# The default places the editor in the text area, which the item padding squeezes. The editor
@@ -460,6 +561,12 @@ class _ValueDelegate(_RowDelegate):
 		super().initStyleOption(option, index)
 		if self._tree.isEditing(index):
 			option.text = ''
+			return
+		if index.siblingAtColumn(0).data(ConfTreeWidget.TYPE_ROLE) == CONF_B:
+			value = parse_bool(option.text)
+			if value is not None:
+				option.features |= QStyleOptionViewItem.HasCheckIndicator
+				option.checkState = Qt.Checked if value else Qt.Unchecked
 
 
 class _ChildrenLoader(QObject):
@@ -752,7 +859,7 @@ class ConfTreeWidget(GuideTreeWidget):
 			return
 
 		text = item.text(self.VALUE_COLUMN)
-		editor = ValueEditor(text)
+		editor = create_editor(item.data(0, self.TYPE_ROLE), text)
 		editor.setFont(item.font(self.VALUE_COLUMN))
 		editor.idle.connect(lambda: self._writeEdited(close=False))
 		editor.commit.connect(lambda: self._writeEdited(close=False))
@@ -764,8 +871,7 @@ class ConfTreeWidget(GuideTreeWidget):
 		# The editor covers the whole cell, see _ValueDelegate.updateEditorGeometry().
 		self._edit_item, self._editor, self._edit_base = item, editor, text
 		self.setItemWidget(item, self.VALUE_COLUMN, editor)
-		editor.setFocus(Qt.OtherFocusReason)
-		editor.selectAll()
+		editor.begin()
 
 	def _closeEditor(self, write):
 		"""Remove the editor, writing its value first if ``write`` and it changed."""
