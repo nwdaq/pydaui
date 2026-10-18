@@ -110,6 +110,8 @@ class ConfClient:
 		# Shared by the clients on the same connection, see PyDauiConnection.sharedSide().
 		self._lock = connection.lock
 		self._queue = ThreadPoolExecutor(max_workers=1, thread_name_prefix='conf-change')
+		# The value names of the enum nodes loaded, by their path as a tuple.
+		self._enum_names = {}
 
 	def submit(self, fn):
 		"""Queue ``fn`` to run off the GUI thread after the changes queued before it."""
@@ -190,9 +192,36 @@ class ConfClient:
 			return None, None
 		return r.get('brief'), r.get('detail')
 
-	def _fmt_value(self, val):
+	def constraints(self, path):
+		"""The constraints of the value of the node at path as the response map, ``None`` if it has none."""
+		r = self.call({'c': 'get_constraints', 'p': path})
+		if r is None or r.get('err'):
+			return None
+		return r
+
+	def _load_enum_names(self, path):
+		"""Get the value names of the enum node at path, the values are their indices. Without the names
+		in the constraints the values are named by their numbers."""
+		c = self.constraints(path)
+		if c is None:
+			return
+		names = c.get('values')
+		if not isinstance(names, list):
+			names = [str(i) for i in range(c.get('count', 0))]
+		if names:
+			self._enum_names[tuple(path)] = [str(name) for name in names]
+
+	def enum_names(self, path):
+		"""The value names of the enum node at path, indexed by the value, ``None`` if they are not known
+		(e.g. the node was not loaded with :meth:`children`)."""
+		return self._enum_names.get(tuple(path))
+
+	def _fmt_value(self, val, path=None):
 		if isinstance(val, bytes):
 			return val.hex()
+		names = self.enum_names(path) if path is not None and isinstance(val, int) else None
+		if names is not None and 0 <= val < len(names):
+			return names[val]
 		return str(val)
 
 	def children(self, path=None):
@@ -209,10 +238,12 @@ class ConfClient:
 
 			value = ''
 			is_subtree = (type == CONF_SUBTREE)
+			if type == CONF_ENUM:
+				self._load_enum_names(child_path)
 			if not is_subtree and type != CONF_NONE:
 				val = self._read(child_path)
 				if val is not None:
-					value = self._fmt_value(val)
+					value = self._fmt_value(val, child_path)
 			brief, detail = self.description(child_path)
 
 			nodes.append({
@@ -231,11 +262,17 @@ class ConfClient:
 		"""Read the value of the node at path formatted for display, or ``None`` if it cannot be read. When
 		``strict``, raises ``TimeoutError`` if the device does not respond to any of the ``retries``."""
 		val = self._read(path, strict, retries)
-		return None if val is None else self._fmt_value(val)
+		return None if val is None else self._fmt_value(val, path)
 
 	@staticmethod
-	def _parse_value(type_int, s):
+	def _parse_value(type_int, s, names=None):
 		try:
+			if type_int == CONF_ENUM and names is not None:
+				# A value name, or a value number with a name.
+				if s in names:
+					return names.index(s)
+				val = int(s, 0)
+				return val if 0 <= val < len(names) else None
 			if type_int == CONF_F:
 				return float(s)
 			elif type_int in (CONF_U32, CONF_U16, CONF_U8, CONF_ENUM):
@@ -256,9 +293,11 @@ class ConfClient:
 			return None
 		return None
 
-	def parse(self, type_int, s):
-		"""Parse the text ``s`` as a value of the given conf type, ``None`` if it is not valid."""
-		return self._parse_value(type_int, s.strip() if type_int != CONF_STR else s)
+	def parse(self, type_int, s, path=None):
+		"""Parse the text ``s`` as a value of the given conf type, ``None`` if it is not valid. An enum
+		value of the node at ``path`` may be given by its name."""
+		names = self.enum_names(path) if path is not None else None
+		return self._parse_value(type_int, s.strip() if type_int != CONF_STR else s, names)
 
 	def write(self, path, type_int, val):
 		"""Write the parsed value ``val`` of the given conf type to the node at path. Raises ``ValueError``
@@ -920,7 +959,9 @@ class ConfTreeWidget(GuideTreeWidget):
 	@Slot(str)
 	def _validateEdited(self, text):
 		if self._editor is not None:
-			self._editor.setValid(self._conf.parse(self._edit_item.data(0, self.TYPE_ROLE), text) is not None)
+			item = self._edit_item
+			self._editor.setValid(self._conf.parse(item.data(0, self.TYPE_ROLE), text, item.data(0, self.PATH_ROLE))
+			                      is not None)
 
 	def _writeEdited(self, close):
 		"""Write the text of the editor if it changed since the edit started or was last written, then
@@ -932,7 +973,7 @@ class ConfTreeWidget(GuideTreeWidget):
 		text = editor.text()
 		if text != self._edit_base:
 			type_int = item.data(0, self.TYPE_ROLE)
-			val = self._conf.parse(type_int, text)
+			val = self._conf.parse(type_int, text, item.data(0, self.PATH_ROLE))
 			if val is None:
 				if close:
 					logging.getLogger(self.__class__.__name__).warning(
