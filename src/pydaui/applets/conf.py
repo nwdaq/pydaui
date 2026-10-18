@@ -710,6 +710,19 @@ class ConfTreeWidget(GuideTreeWidget):
 		                 Qt.TextWordWrap | Qt.AlignVCenter, index.siblingAtColumn(0).data(self.DETAIL_ROLE))
 		painter.restore()
 
+	def mousePressEvent(self, event):
+		# A subtree row clicked anywhere, its indicator included, is expanded or collapsed here, not by the tree.
+		item = self.itemAt(event.position().toPoint())
+		if event.button() != Qt.LeftButton or item is None or item.data(0, self.TYPE_ROLE) != CONF_SUBTREE:
+			super().mousePressEvent(event)
+			return
+		self.setCurrentItem(item)
+		item.setExpanded(not item.isExpanded())
+
+	def mouseDoubleClickEvent(self, event):
+		# Double clicks do nothing, their second click is pressed as another click.
+		pass
+
 	def resizeEvent(self, event):
 		super().resizeEvent(event)
 		if self._details:
