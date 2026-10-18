@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+{#
+  The default template of the calibration certificate PDF document, rendered by
+  pydaui.applets.calibration_pdf. See its context() for the variables.
+#}
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Calibration certificate {{ adm.id or '' }}</title>
+<style>
+	@page {
+		size: A4;
+		margin: 22mm 12mm 20mm 12mm;
+		@top-left {
+			content: string(lab);
+			font-size: 8pt;
+			color: #666;
+		}
+		@top-right {
+			content: "Calibration certificate No. " string(certid);
+			font-size: 8pt;
+			color: #666;
+		}
+		@bottom-right {
+			content: "Page " counter(page) " of " counter(pages);
+			font-size: 8pt;
+			color: #666;
+		}
+		@bottom-left {
+			content: "Generated {{ generated }}";
+			font-size: 8pt;
+			color: #666;
+		}
+	}
+	@page :first {
+		@top-left { content: none; }
+		@top-right { content: none; }
+	}
+
+	html {
+		font-family: "DejaVu Sans", "Liberation Sans", Arial, sans-serif;
+		font-size: 9.5pt;
+		color: #222;
+	}
+	h1 {
+		font-size: 20pt;
+		margin: 0;
+		color: #1a4f8b;
+	}
+	h2 {
+		font-size: 12pt;
+		color: #1a4f8b;
+		border-bottom: 1px solid #1a4f8b;
+		padding-bottom: 2pt;
+		margin: 16pt 0 6pt 0;
+		break-after: avoid;
+	}
+	.mono {
+		font-family: "DejaVu Sans Mono", "Liberation Mono", monospace;
+	}
+	.remark {
+		white-space: pre-line;
+	}
+	.muted {
+		color: #777;
+	}
+
+	/* The doodle band across the top of the first page, 210 x 50 mm from the corner of the paper regardless of
+	   the page margins. The tiles are large and rotated to hide their repetition: a layer larger than the
+	   band, centered on it, rotated and clipped by it. */
+	.doodle {
+		position: absolute;
+		top: -22mm;
+		left: -18mm;
+		width: 210mm;
+		height: 40mm;
+		overflow: hidden;
+		opacity: 0.5;
+	}
+	.doodle div {
+		position: absolute;
+		left: -95mm;
+		top: -175mm;
+		width: 400mm;
+		height: 400mm;
+		background: url("doodle-tile.svg") repeat;
+		background-size: 150mm 150mm;
+		transform: rotate(10deg);
+	}
+
+	/* Header: the issuing laboratory on the left, the title and the identifier on the right. */
+	.header {
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-start;
+		padding-bottom: 8pt;
+		margin-top: 34mm;
+	}
+	.header .lab {
+		font-size: 9pt;
+		line-height: 1.35;
+	}
+	/* Repeated in the page headers. */
+	.header .lab .name {
+		string-set: lab content();
+		font-size: 11pt;
+		font-weight: bold;
+	}
+	.header .title {
+		text-align: right;
+	}
+	.header .id .mono {
+		string-set: certid content();
+	}
+	.header .id {
+		font-size: 12pt;
+		margin-top: 4pt;
+	}
+
+	table {
+		width: 100%;
+		border-collapse: collapse;
+	}
+	table.fields th {
+		width: 32%;
+		text-align: left;
+		font-weight: normal;
+		color: #555;
+		vertical-align: top;
+		padding: 3pt 8pt 3pt 0;
+	}
+	table.fields td {
+		vertical-align: top;
+		padding: 3pt 0;
+	}
+	table.list th {
+		text-align: left;
+		border: 0.5pt solid #eee;
+		border-bottom: 0.75pt solid #222;
+		padding: 3pt 6pt;
+	}
+	table.list td {
+		border: 0.5pt solid #eee;
+		padding: 3pt 6pt;
+		vertical-align: top;
+	}
+	table.targets {
+		font-size: 8.5pt;
+	}
+	.result {
+		break-inside: avoid;
+	}
+	table.points {
+		margin-top: 12pt;
+	}
+	table.points th {
+		font-weight: normal;
+		vertical-align: bottom;
+	}
+	table.points th .kind,
+	table.points th .note {
+		font-size: 7.5pt;
+		color: #555;
+	}
+	table.points .num {
+		width: 1%;
+		text-align: right;
+	}
+	tr {
+		break-inside: avoid;
+	}
+
+	/* The compensation model of a result group, its constants and its graph. */
+	.model {
+		break-inside: avoid;
+	}
+	h4 {
+		font-size: 9.5pt;
+		margin: 16pt 0 4pt 0;
+	}
+	.model .coefficients td {
+		padding: 1pt 10pt 1pt 0;
+	}
+	.model .graph {
+		text-align: center;
+		margin-top: 6pt;
+	}
+	.model .graph img {
+		width: 100%;
+	}
+
+	.data {
+		break-before: page;
+	}
+	.dump {
+		font-size: 7pt;
+		line-height: 1.25;
+		white-space: pre;
+		background: #f6f6f6;
+		border: 1px solid #ddd;
+		padding: 4pt 6pt;
+	}
+	.dump.wrap {
+		white-space: normal;
+	}
+	/* The Base64 dump fills the width, broken anywhere. */
+	.dump.base64 {
+		word-break: break-all;
+	}
+	.qr {
+		text-align: center;
+		break-inside: avoid;
+	}
+	.qr img {
+		width: 70mm;
+	}
+	.checksum {
+		font-size: 10pt;
+		letter-spacing: 0.5pt;
+	}
+
+	/* The handwritten signatures of the responsible persons. */
+	.hand {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 10mm;
+		margin-top: 12pt;
+		break-inside: avoid;
+	}
+	.hand .box {
+		width: 75mm;
+		padding-top: 18mm;
+	}
+	.hand .line {
+		border-top: 1px solid #222;
+		padding-top: 2pt;
+	}
+</style>
+</head>
+<body>
+
+<div class="doodle"><div></div></div>
+
+<div class="header">
+	<div class="lab">
+		{% if adm.lab %}
+		<div class="name">{{ adm.lab.n }}</div>
+		{% for line in adm.lab.addr_lines %}
+		<div>{{ line }}</div>
+		{% endfor %}
+		{% if adm.lab.acc %}<div>Accreditation: {{ adm.lab.acc }}</div>{% endif %}
+		{% if adm.lab.email %}<div>{{ adm.lab.email }}</div>{% endif %}
+		{% else %}
+		<div class="muted">Laboratory not specified</div>
+		{% endif %}
+	</div>
+	<div class="title">
+		<h1>Calibration certificate</h1>
+		<div class="id">No. <span class="mono">{{ adm.id or '—' }}</span></div>
+		{% if adm.di %}<div class="muted">Issued {{ adm.di }}</div>{% endif %}
+	</div>
+</div>
+
+<h2>Administrative data</h2>
+<table class="fields">
+	<tr><th>Certificate ID</th><td class="mono">{{ adm.id or '—' }}</td></tr>
+	<tr>
+		<th>Customer</th>
+		<td>
+			{% if adm.cst %}
+			<div><b>{{ adm.cst.n }}</b></div>
+			{% for line in adm.cst.addr_lines %}
+			<div>{{ line }}</div>
+			{% endfor %}
+			{% if adm.cst.email %}<div>{{ adm.cst.email }}</div>{% endif %}
+			{% else %}—{% endif %}
+		</td>
+	</tr>
+	<tr>
+		<th>Calibration laboratory</th>
+		<td>
+			{% if adm.lab %}
+			<div><b>{{ adm.lab.n }}</b></div>
+			{% if adm.lab.acc %}<div>Accreditation: {{ adm.lab.acc }}</div>{% endif %}
+			{% else %}—{% endif %}
+		</td>
+	</tr>
+	<tr><th>Location of calibration</th><td>{{ adm.loc or '—' }}</td></tr>
+	<tr><th>Calibration begin</th><td>{{ adm.db or '—' }}</td></tr>
+	<tr><th>Calibration end</th><td>{{ adm.de or '—' }}</td></tr>
+	<tr><th>Date of issue</th><td>{{ adm.di or '—' }}</td></tr>
+	{% if adm.sw %}
+	<tr>
+		<th>Software</th>
+		<td>
+			{% for entry in adm.sw %}
+			<div>{{ entry.n }}{% if entry.ver %} <span class="mono">{{ entry.ver }}</span>{% endif %}</div>
+			{% endfor %}
+		</td>
+	</tr>
+	{% endif %}
+</table>
+
+<h2>Responsible persons</h2>
+{% if adm.rsp %}
+<table class="list">
+	<tr><th>Name</th><th>Role</th><th>Principal signatory</th></tr>
+	{% for person in adm.rsp %}
+	<tr>
+		<td>{{ person.n }}</td>
+		<td>{{ person.role or '' }}</td>
+		<td>{{ 'Yes' if person.main else '' }}</td>
+	</tr>
+	{% endfor %}
+</table>
+{% else %}
+<p class="muted">No responsible persons are listed in the certificate.</p>
+{% endif %}
+
+{% if adm.rem %}
+<h2>Remarks</h2>
+{% for remark in adm.rem %}
+<p class="remark">{{ remark }}</p>
+{% endfor %}
+{% endif %}
+
+<h2>Calibration targets</h2>
+{% if targets %}
+<table class="list targets">
+	<tr>
+		<th>#</th><th>Name</th><th>Type</th><th>Manufacturer, part number</th><th>Serial number</th>
+		<th>Measurand</th><th>Indication</th>
+	</tr>
+	{% for target in targets %}
+	<tr>
+		<td class="mono" style="padding-left: {{ 6 + 10 * target.depth }}pt">{{ target.id }}</td>
+		<td>{{ target.n or '' }}</td>
+		<td>{{ target.t or '' }}</td>
+		<td>{{ [target.mfg, target.pn] | select | join(', ') }}</td>
+		<td>{{ target.sn or '' }}</td>
+		<td>{{ target.measurand or '' }}</td>
+		<td>{{ target.indication or '' }}</td>
+	</tr>
+	{% endfor %}
+</table>
+{% else %}
+<p class="muted">No calibration targets are listed in the certificate.</p>
+{% endif %}
+
+{% for result in results %}
+<div class="result">
+	<h2>Result group {{ result.index }}{% if result.desc %} — {{ result.desc }}{% endif %}</h2>
+	<table class="fields">
+		<tr><th>Target</th><td>{{ result.target or '—' }}</td></tr>
+		{% if result.cfg %}<tr><th>Configuration</th><td>{{ result.cfg }}</td></tr>{% endif %}
+		{% if result.conditions %}
+		<tr><th>Conditions</th><td>{% for condition in result.conditions %}<div>{{ condition }}</div>{% endfor %}</td></tr>
+		{% endif %}
+		{% if result.equipment %}
+		<tr><th>Equipment</th><td>{% for item in result.equipment %}<div>{{ item }}</div>{% endfor %}</td></tr>
+		{% endif %}
+		{% if result.method %}<tr><th>Method</th><td>{{ result.method }}</td></tr>{% endif %}
+	</table>
+	{% if result.columns %}
+	<table class="list points">
+		<tr>
+			<th class="num">#</th>
+			{% for column in result.columns %}
+			<th>
+				<div class="kind">{{ column.kind }}</div>
+				<div>{{ column.name }}{% if column.unit %} [{{ column.unit }}]{% endif %}</div>
+				{% if column.note %}<div class="note">{{ column.note }}</div>{% endif %}
+			</th>
+			{% endfor %}
+		</tr>
+		{% for row in result.rows %}
+		<tr>
+			<td class="num muted">{{ loop.index }}</td>
+			{% for cell in row %}<td class="mono">{{ cell }}</td>{% endfor %}
+		</tr>
+		{% endfor %}
+	</table>
+	{% endif %}
+	{% if result.model %}
+	<div class="model">
+		<h4>Compensation model</h4>
+		<table class="fields">
+			<tr><th>Model</th><td class="mono">{{ result.model.formula }}</td></tr>
+			{% if result.model.x0 %}<tr><th>Centering offset (x0)</th><td class="mono">{{ result.model.x0 }}</td></tr>{% endif %}
+			<tr>
+				<th>Coefficients of p</th>
+				<td>
+					<table class="coefficients">
+						{% for name, value in result.model.coefficients %}
+						<tr><td class="mono">{{ name }}</td><td class="mono">{{ value }}</td></tr>
+						{% endfor %}
+					</table>
+				</td>
+			</tr>
+			{% if result.model.residuals %}<tr><th>Residuals at the points</th><td>{{ result.model.residuals }}</td></tr>{% endif %}
+		</table>
+		{% if result.model.graph %}
+		<div class="graph"><img src="{{ result.model.graph }}" alt="Graph of the compensation model"></div>
+		{% endif %}
+	</div>
+	{% endif %}
+</div>
+{% else %}
+<h2>Measurement results</h2>
+<p class="muted">No measurement results are listed in the certificate.</p>
+{% endfor %}
+
+<div class="data">
+	<h2>Certificate data</h2>
+	<p>
+		The digital certificate, CBOR calibration certificate format version {{ version }}, {{ size }} bytes,
+		encoded in Base64. The same bytes are encoded in the QR code below.
+	</p>
+	<div class="dump wrap base64 mono">{{ base64 }}</div>
+
+	<div class="qr">
+		{% if qr %}
+		<p><img src="{{ qr }}" alt="QR code of the certificate data"></p>
+		{% else %}
+		<p class="muted">The certificate is too large for a QR code.</p>
+		{% endif %}
+	</div>
+</div>
+
+<h2>Checksum</h2>
+<table class="fields">
+	<tr><th>Algorithm</th><td>{{ checksum_algorithm }}</td></tr>
+	<tr><th>Checksum</th><td class="mono checksum">{{ checksum }}</td></tr>
+</table>
+<p class="muted">The checksum of the certificate data above, as decoded from the Base64 dump or the QR code.</p>
+
+<h2>Signatures</h2>
+{% if signed %}
+<p>The certificate is digitally signed by the following entities, in the order their signatures follow.</p>
+<table class="list">
+	<tr><th>Role</th><th>Name</th><th>Signature method</th></tr>
+	{% for role, name, method in signing %}
+	<tr><td>{{ role }}</td><td>{{ name }}</td><td>{{ method or 'Not signed' }}</td></tr>
+	{% endfor %}
+</table>
+{% if signatures %}
+<p>Signature data:</p>
+<div class="dump wrap mono">{{ signatures }}</div>
+{% else %}
+<p class="muted">No signature data is attached to the certificate yet.</p>
+{% endif %}
+{% else %}
+<p class="muted">The certificate is not digitally signed.</p>
+{% endif %}
+
+{% if adm.rsp %}
+<div class="hand">
+	{% for person in adm.rsp %}
+	<div class="box">
+		<div class="line">{{ person.n }}</div>
+		<div class="muted">{{ person.role or '' }}</div>
+	</div>
+	{% endfor %}
+</div>
+{% endif %}
+
+</body>
+</html>
