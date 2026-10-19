@@ -72,14 +72,16 @@ done
 #   forever otherwise.
 # - The activity style sets no system bar colors, the bars stay black. Qt asks for dark icons in the light
 #   mode, they are not visible then. The colors are in packaging/android/res, added below.
+# - The isolated environments of build 1.4.3 and later clear PYTHONPATH, the hostpython of this p4a
+#   finds its native stdlib modules (math) through it only, numpy fails to build then.
 [ -d "$P4A/.git" ] || git clone --filter=blob:none "$P4A_REPO" "$P4A"
 git -C "$P4A" checkout -f -q "$P4A_COMMIT"
-python - "$P4A/pythonforandroid/bootstraps/qt/build" <<'EOF'
+python - "$P4A/pythonforandroid" <<'EOF'
 import os, sys
-build = sys.argv[1]
+root = sys.argv[1]
 
 def patch(path, old, new):
-	path = os.path.join(build, path)
+	path = os.path.join(root, path)
 	with open(path) as f:
 		source = f.read()
 	assert source.count(old) == 1, f'{old!r} not found in {path}'
@@ -87,12 +89,13 @@ def patch(path, old, new):
 		f.write(source.replace(old, new))
 
 method = 'protected void onActivityResult(int requestCode, int resultCode, Intent intent) {\n'
-patch('src/main/java/org/kivy/android/PythonActivity.java', method,
+patch('bootstraps/qt/build/src/main/java/org/kivy/android/PythonActivity.java', method,
       method + '        super.onActivityResult(requestCode, resultCode, intent);\n')
 no_title = '<item name="android:windowNoTitle">true</item>\n'
-patch('templates/strings.tmpl.xml', no_title,
+patch('bootstraps/qt/build/templates/strings.tmpl.xml', no_title,
       no_title + '        <item name="android:statusBarColor">@color/pydaui_status_bar</item>\n'
                  '        <item name="android:navigationBarColor">@color/pydaui_navigation_bar</item>\n')
+patch('recipe.py', '"build[virtualenv]"', '"build[virtualenv]<1.4.3"')
 EOF
 
 # --init generates the recipes, the jars and buildozer.spec without building. The spec is
