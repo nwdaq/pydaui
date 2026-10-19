@@ -15,16 +15,19 @@ jobs:
     container: debian:trixie
 
     steps:
-    - name: Install build dependencies
+    # Git before the checkout, it downloads the repository without the history otherwise
+    - name: Install git
       run: |
         apt-get update
-        apt-get install -y --no-install-recommends git ca-certificates dpkg-dev debhelper dh-python \
-          pybuild-plugin-pyproject python3-all python3-pdm-backend python3-pip patchelf
+        apt-get install -y --no-install-recommends git ca-certificates
 
     - name: Checkout the repository
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
+
+    - name: Install build dependencies
+      run: apt-get build-dep -y --no-install-recommends ./
 
     - name: Build
       run: |
