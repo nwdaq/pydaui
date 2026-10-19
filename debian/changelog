@@ -1,0 +1,6 @@
+pydaui (0.2.0~dev) unstable; urgency=medium
+
+  * Debian package. The package version is taken from git when building, see
+    debian/rules.
+
+ -- Marek Koza <qyx@krtko.org>  Mon, 19 Oct 2026 12:00:00 +0200

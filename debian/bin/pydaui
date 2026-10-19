@@ -1,0 +1,12 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# pydaui launcher, the application and the bundled libraries are private to the package
+
+import sys
+
+sys.path.insert(0, '/usr/lib/pydaui')
+
+from pydaui.__main__ import main
+
+sys.exit(main())

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=pydaui
+GenericName=DAQ frontend
+Comment=Frontend interface for devices running plumCore
+Exec=pydaui
+Icon=pydaui
+Terminal=false
+Categories=Development;Electronics;
+StartupWMClass=pydaui

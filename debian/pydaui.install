@@ -1,0 +1,2 @@
+debian/bin/pydaui usr/bin
+debian/pydaui.desktop usr/share/applications
