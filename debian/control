@@ -6,6 +6,8 @@ Build-Depends:
  debhelper-compat (= 13),
  dh-sequence-python3,
  git,
+# The bundled SimplePyBLE is linked against it, dpkg-shlibdeps looks it up
+ libdbus-1-3,
  patchelf,
  pybuild-plugin-pyproject,
  python3-all,
