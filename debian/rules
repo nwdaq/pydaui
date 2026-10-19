@@ -16,13 +16,14 @@ PRIVATE = debian/pydaui/usr/lib/pydaui
 
 # The launcher in debian/bin replaces the entry point script, it adds the private directory to the path.
 # SimplePyBLE uses the system libdbus instead of the copy in its wheel (with its dependencies).
+# The CMSIS packs used for SWD are left out, they are to be downloaded by the application.
 execute_after_dh_auto_install:
 	rm -rf debian/pydaui/usr/bin
 	python3 -m pip install --target $(PRIVATE) --no-deps --no-compile --no-index --no-build-isolation \
 		--disable-pip-version-check --break-system-packages vendor/pynbus2-*.tar.gz
 	python3 -m pip install --target $(PRIVATE) --no-deps --no-compile --only-binary :all: --require-hashes \
 		--disable-pip-version-check --break-system-packages -r debian/bundled.txt
-	rm -rf $(PRIVATE)/bin $(PRIVATE)/pyqtgraph/examples
+	rm -rf $(PRIVATE)/bin $(PRIVATE)/pyqtgraph/examples $(PRIVATE)/pydaui/*.pack
 	patchelf --remove-rpath --replace-needed $$(basename $(PRIVATE)/simplepyble.libs/libdbus-1-*) \
 		libdbus-1.so.3 $(PRIVATE)/simplepyble/_simplepyble.*.so
 	rm -rf $(PRIVATE)/simplepyble.libs
