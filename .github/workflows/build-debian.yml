@@ -2,7 +2,7 @@ name: Build a Debian package
 
 on:
   push:
-    branches: [ "master", "develop" ]
+    branches: [ "master", "develop", "feature/debian-package" ]
 
 permissions:
   contents: read
