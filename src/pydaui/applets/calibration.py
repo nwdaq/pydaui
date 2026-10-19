@@ -34,10 +34,10 @@ from PySide6.QtGui import *
 from pynbus2.services import flash as flash_service
 
 from pydaui import build_info, compensation, quantities
-from pydaui.applets import calibration_pdf, conf
+from pydaui.applets import conf
 from pydaui.applets.flash import Aborted, FlashClient, _Operation, can_read, can_write, format_size, interface_mtu
 from pydaui.files import display_name, read_file, write_file
-from pydaui.ui.helpers import Admonition, AppletWindow, DauiButton, StyledTreeWidget, TabScrollArea, WrappedLabel
+from pydaui.ui.helpers import ANDROID, Admonition, AppletWindow, DauiButton, StyledTreeWidget, TabScrollArea, WrappedLabel
 from pydaui.ui.icons import Icons
 from pydaui.ui.plot import GRAPH_COLORS, Plot, monospace_font
 from pydaui.ui.progress_window import ByteFormat, ProgressWindow
@@ -575,14 +575,16 @@ class CertificateView(QWidget):
 		save = DauiButton(self.tr('Save'), Icons.save())
 		save.setToolTip(self.tr('Save the certificate to a local file'))
 		save.clicked.connect(self.saveRequested)
-		pdf = DauiButton(self.tr('Generate PDF'), Icons.certificate())
-		pdf.setToolTip(self.tr('Export the certificate as a printable PDF document'))
-		pdf.clicked.connect(self.pdfRequested)
 		files = QGroupBox(self.tr('Import/Export'))
 		files_row = QHBoxLayout(files)
 		files_row.addWidget(open_file)
 		files_row.addWidget(save)
-		files_row.addWidget(pdf)
+		# No PDF export on Android, WeasyPrint needs Pango there is no build of.
+		if not ANDROID:
+			pdf = DauiButton(self.tr('Generate PDF'), Icons.certificate())
+			pdf.setToolTip(self.tr('Export the certificate as a printable PDF document'))
+			pdf.clicked.connect(self.pdfRequested)
+			files_row.addWidget(pdf)
 		files_row.addStretch(1)
 
 		# The versions of the software components the check boxes list, the firmware one once read.
@@ -3457,6 +3459,9 @@ class CalibrationCertificate(QWidget):
 		# A copy, the certificate may be edited while the document is rendered.
 		certificate = copy.deepcopy(self._certificate)
 		data = encode(certificate)
+
+		# Imported here, its dependencies are not bundled on Android.
+		from pydaui.applets import calibration_pdf
 
 		def render(progress, abort, stage):
 			pdf = calibration_pdf.render_pdf(certificate, data, VERSION)
