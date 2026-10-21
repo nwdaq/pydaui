@@ -1,0 +1,8 @@
+# Bundled in /usr/lib/pydaui, keep in sync with pdm.lock.
+# The Debian python3-pyqtgraph depends on scipy and the PyQt development tools.
+pyqtgraph==0.14.0 --hash=sha256:7abb7c3e17362add64f8711b474dffac5e7b0e9245abdf992e9a44119b7aa4f5
+# Not packaged in Debian, the wheel for the architecture built for.
+simplepyble==1.2.0 \
+    --hash=sha256:5dff9064eeaa4149403944ed633e1bc184f3ed239392dbda8c74c1d9af1feec7 \
+    --hash=sha256:4af2b747a7a8410532e2eaec34768fb7ce385691aee4cddc385d190dcfea5449 \
+    --hash=sha256:523d1e39d90a741a88d74228a3ed82b58537a9b9528b0699decbda43991723c9

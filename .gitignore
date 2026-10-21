@@ -13,3 +13,13 @@ dist/
 # Build information stamped by the builds
 src/pydaui/build.json
 src/pydaui/changelog.json
+
+# Debian package build
+.pybuild/
+debian/.debhelper/
+debian/pydaui/
+debian/debhelper-build-stamp
+debian/files
+debian/*.substvars
+debian/*.log
+debian/*.debhelper

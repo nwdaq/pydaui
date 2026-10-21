@@ -1,0 +1,43 @@
+#!/usr/bin/make -f
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# The application is installed in /usr/lib/pydaui, with the bundled pyqtgraph, SimplePyBLE and pynbus2
+# not packaged in Debian (or with heavy dependencies), all other dependencies are Debian packages.
+
+export PYBUILD_NAME = pydaui
+export PYBUILD_INSTALL_DIR = /usr/lib/pydaui
+# The runtime dependencies are not build dependencies, the tests are run in the development environment
+export PYBUILD_DISABLE = test
+
+PRIVATE = debian/pydaui/usr/lib/pydaui
+
+%:
+	dh $@ --buildsystem=pybuild
+
+# The launcher in debian/bin replaces the entry point script, it adds the private directory to the path.
+# SimplePyBLE uses the system libdbus instead of the copy in its wheel (with its dependencies).
+# The CMSIS packs used for SWD are left out, they are to be downloaded by the application.
+execute_after_dh_auto_install:
+	rm -rf debian/pydaui/usr/bin
+	python3 -m pip install --target $(PRIVATE) --no-deps --no-compile --no-index --no-build-isolation \
+		--disable-pip-version-check --break-system-packages vendor/pynbus2-*.tar.gz
+	python3 -m pip install --target $(PRIVATE) --no-deps --no-compile --only-binary :all: --require-hashes \
+		--disable-pip-version-check --break-system-packages -r debian/bundled.txt
+	rm -rf $(PRIVATE)/bin $(PRIVATE)/pyqtgraph/examples $(PRIVATE)/pydaui/*.pack
+	patchelf --remove-rpath --replace-needed $$(basename $(PRIVATE)/simplepyble.libs/libdbus-1-*) \
+		libdbus-1.so.3 $(PRIVATE)/simplepyble/_simplepyble.*.so
+	rm -rf $(PRIVATE)/simplepyble.libs
+	install -D -m 644 src/pydaui/icons/plum.svg debian/pydaui/usr/share/icons/hicolor/scalable/apps/pydaui.svg
+
+# Byte-compiled when installed
+override_dh_python3:
+	dh_python3 /usr/lib/pydaui
+
+# The bundled SimplePyBLE comes without debug symbols
+override_dh_strip:
+	dh_strip --no-automatic-dbgsym
+
+# The package version is derived from git like in the other builds, ordered by the commits after the tag
+# (0.2.0-dev-117-g3c6d8af becomes 0.2.0~dev+117.g3c6d8af)
+override_dh_gencontrol:
+	dh_gencontrol -- -v$(shell git describe --tags | sed -e 's/-dev/~dev/' -e 's/-\([0-9]*\)-g/+\1.g/')

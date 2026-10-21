@@ -1,0 +1,45 @@
+Source: pydaui
+Section: electronics
+Priority: optional
+Maintainer: Marek Koza <qyx@krtko.org>
+Build-Depends:
+ debhelper-compat (= 13),
+ dh-sequence-python3,
+ git,
+# The bundled SimplePyBLE is linked against it, dpkg-shlibdeps looks it up
+ libdbus-1-3,
+ patchelf,
+ pybuild-plugin-pyproject,
+ python3-all,
+ python3-pdm-backend,
+ python3-pip,
+Standards-Version: 4.7.0
+Homepage: https://krtko.org
+Rules-Requires-Root: no
+
+Package: pydaui
+Architecture: amd64 arm64 i386
+Depends:
+ ${misc:Depends},
+ ${python3:Depends},
+ ${shlibs:Depends},
+ python3 (>= 3.13~),
+ python3 (<< 3.14),
+# Not translated from the Python dependencies, PySide6 has no dist-info in Debian
+ python3-pyside6.qtcore,
+ python3-pyside6.qtgui,
+ python3-pyside6.qtopengl,
+ python3-pyside6.qtopenglwidgets,
+ python3-pyside6.qtsvg,
+ python3-pyside6.qtwidgets,
+Recommends:
+ python3-paramiko,
+ python3-pyocd,
+ python3-serial,
+Description: DAQ frontend interface for devices running plumCore
+ da_UI is the frontend interface of data acquisition devices running the
+ plumCore framework, connected over BLE, serial, SWD, SSH or UDP.
+ .
+ The pyqtgraph plotting library, the SimplePyBLE Bluetooth library and the
+ pynbus2 client library are bundled. The serial, SWD and SSH connections need
+ the recommended packages.

@@ -1,0 +1,49 @@
+name: Build a Debian package
+
+on:
+  push:
+    branches: [ "master", "develop", "feature/debian-package" ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+    # The PySide6 and Python 3.13 packages the package depends on
+    container: debian:trixie
+
+    steps:
+    # Git before the checkout, it downloads the repository without the history otherwise
+    - name: Install git
+      run: |
+        apt-get update
+        apt-get install -y --no-install-recommends git ca-certificates
+
+    - name: Checkout the repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Install build dependencies
+      run: apt-get build-dep -y --no-install-recommends ./
+
+    - name: Build
+      run: |
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
+        dpkg-buildpackage -b -us -uc
+        mkdir dist
+        mv ../pydaui_*.deb dist/
+        echo "ARTIFACT_NAME=$(basename dist/pydaui_*.deb .deb)" >> $GITHUB_ENV
+
+    - name: Smoke test
+      run: |
+        apt-get install -y ./dist/pydaui_*.deb
+        QT_QPA_PLATFORM=offscreen timeout 10 pydaui || test $? -eq 124
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        path: dist/*.deb
+        name: ${{ env.ARTIFACT_NAME }}
