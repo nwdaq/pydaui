@@ -300,9 +300,14 @@ class DauiApplication(QApplication):
 		self.setApplicationName('pydaui')
 
 		self.setStyle(DauiStyle())
-		# The edit fields are white, the platform theme (e.g. on XFCE) may give them the window colour.
+		# The edit fields stand out of the window, the platform theme (e.g. on XFCE) may give them the window
+		# colour: white in a light palette, darker than the window in a dark one.
 		palette = self.palette()
-		palette.setColor(QPalette.Base, Qt.white)
+		window = palette.color(QPalette.Window)
+		if window.lightness() >= 128:
+			palette.setColor(QPalette.Base, Qt.white)
+		elif palette.color(QPalette.Base) == window:
+			palette.setColor(QPalette.Base, window.darker(140))
 		self.setPalette(palette)
 
 		self._settings = Settings()

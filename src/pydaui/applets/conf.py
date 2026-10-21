@@ -411,7 +411,7 @@ class TextEditor(QLineEdit):
 	# value does not move when the editor opens.
 	STYLE = """
 		QLineEdit {
-			background-color: white;
+			background-color: palette(base);
 			border: 1px solid %s;
 			border-radius: 0;
 			padding: 0 7px;
@@ -481,7 +481,7 @@ class BoolEditor(QFrame):
 	# It covers the whole cell like the line edit, the check box is where the cell draws its indicator.
 	STYLE = """
 		BoolEditor {
-			background-color: white;
+			background-color: palette(base);
 			border: 1px solid %s;
 		}
 	""" % TextEditor.BORDER
@@ -736,9 +736,8 @@ class ConfTreeWidget(GuideTreeWidget):
 	DETAIL_TOP_PADDING = 2
 	DETAIL_BOTTOM_PADDING = 9
 
-	#: The look of the bubble, of a note Admonition: its background, border, corner radius, the size of its
-	#: icon and its padding around the icon and the text.
-	DETAIL_BACKGROUND = '#fff'
+	#: The look of the bubble, of a note Admonition on the edit field background: its border, corner radius,
+	#: the size of its icon and its padding around the icon and the text.
 	DETAIL_BORDER = '#008'
 	DETAIL_RADIUS = 5
 	DETAIL_ICON_SIZE = 20
@@ -906,7 +905,7 @@ class ConfTreeWidget(GuideTreeWidget):
 		painter.save()
 		painter.setRenderHint(QPainter.Antialiasing)
 		painter.setPen(QPen(QColor(self.DETAIL_BORDER), 1))
-		painter.setBrush(QColor(self.DETAIL_BACKGROUND))
+		painter.setBrush(option.palette.color(QPalette.Base))
 		# On the pixel centres, the border is sharp.
 		painter.drawRoundedRect(QRectF(bubble).adjusted(0.5, 0.5, -0.5, -0.5), self.DETAIL_RADIUS, self.DETAIL_RADIUS)
 		# The icon centred vertically, as in an Admonition.

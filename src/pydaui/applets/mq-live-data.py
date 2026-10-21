@@ -640,7 +640,7 @@ class _ValuePanel(QDockWidget):
 		if stale != self._stale:
 			self._stale = stale
 			self._label.setStyleSheet(f'QLabel#value {{ color: {self.STALE_COLOR if stale else self.COLOR}; '
-			                          f'background-color: white; border-top: 1px solid {self.BORDER_COLOR}; }}')
+			                          f'background-color: palette(base); border-top: 1px solid {self.BORDER_COLOR}; }}')
 
 	def eventFilter(self, obj, event):
 		if obj is self._label and event.type() == QEvent.Resize:
