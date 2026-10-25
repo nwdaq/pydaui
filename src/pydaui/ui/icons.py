@@ -113,6 +113,17 @@ class Icons:
 		</svg>""")
 
 	@staticmethod
+	def duplicate():
+		"""A duplicate icon: two overlapping sheets, the copy in front lower right of the original."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<g stroke="{Icons.PRIMARY}" stroke-width="1.1" stroke-linejoin="round">
+				<rect x="3.5" y="3.5" width="11.5" height="13" rx="1.2" fill="{Icons.WHITE}"/>
+				<rect x="9" y="7.5" width="11.5" height="13" rx="1.2" fill="{Icons.PRIMARY_LIGHT}"/>
+				<path d="M12 12 H17.5 M12 14.5 H17.5 M12 17 H15.5" stroke-width="0.9"/>
+			</g>
+		</svg>""")
+
+	@staticmethod
 	def confirm():
 		"""A confirm icon: a thick check mark."""
 		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
