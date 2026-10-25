@@ -411,7 +411,7 @@ class TextEditor(QLineEdit):
 	# value does not move when the editor opens.
 	STYLE = """
 		QLineEdit {
-			background-color: palette(base);
+			background-color: %s;
 			border: 1px solid %s;
 			border-radius: 0;
 			padding: 0 7px;
@@ -419,6 +419,8 @@ class TextEditor(QLineEdit):
 	"""
 	BORDER = '#7aa7e3'
 	INVALID_BORDER = '#c0392b'
+	#: How much of :attr:`INVALID_BORDER` the edit field background of a value which is not valid is tinted with.
+	INVALID_TINT = 0.25
 
 	def __init__(self, text):
 		super().__init__(text)
@@ -430,8 +432,15 @@ class TextEditor(QLineEdit):
 		self.setValid(True)
 
 	def setValid(self, valid):
-		"""Show whether the text is a valid value, with a red border if not."""
-		self.setStyleSheet(self.STYLE % (self.BORDER if valid else self.INVALID_BORDER))
+		"""Show whether the text is a valid value, with a red border and the edit field background of the
+		palette tinted red if not."""
+		if valid:
+			self.setStyleSheet(self.STYLE % ('palette(base)', self.BORDER))
+			return
+		base, red, tint = QApplication.palette().color(QPalette.Base), QColor(self.INVALID_BORDER), self.INVALID_TINT
+		background = QColor.fromRgbF(*(a * (1 - tint) + b * tint for a, b in
+		                               zip(base.getRgbF()[:3], red.getRgbF()[:3])))
+		self.setStyleSheet(self.STYLE % (background.name(), self.INVALID_BORDER))
 
 	def stopIdleTimer(self):
 		self._timer.stop()
