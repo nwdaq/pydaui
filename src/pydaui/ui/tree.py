@@ -148,8 +148,9 @@ class DetailTreeWidget(GuideTreeWidget):
 	#: The role of the full description of an item, empty if it has none.
 	DETAIL_ROLE = Qt.UserRole
 
-	#: Colour of the full descriptions, not to dominate over the values.
-	DETAIL_COLOR = '#444'
+	#: How much the colour of the descriptions is blended from the text colour towards the edit field background,
+	#: not to dominate over the values, see :meth:`descriptionColor`.
+	DESCRIPTION_DIM = 0.3
 
 	#: The horizontal padding of the full description bubble, where the cells draw their texts, and its
 	#: padding above (below the bottom padding of the cells) and below.
@@ -169,6 +170,13 @@ class DetailTreeWidget(GuideTreeWidget):
 		# Whether the full descriptions are shown below the items.
 		self._details = False
 		self._detail_icon = Icons.about()
+
+	def descriptionColor(self, palette=None):
+		"""The colour of the descriptions, the text colour of the ``palette`` (the tree's by default) blended
+		towards its edit field background, so they are readable in a light and a dark theme alike."""
+		palette = palette or self.palette()
+		text, base, dim = palette.color(QPalette.Text), palette.color(QPalette.Base), self.DESCRIPTION_DIM
+		return QColor.fromRgbF(*(a * (1 - dim) + b * dim for a, b in zip(text.getRgbF()[:3], base.getRgbF()[:3])))
 
 	def setShowDetails(self, show):
 		"""Show the full description of each item below it, word-wrapped across all the columns."""
@@ -226,7 +234,7 @@ class DetailTreeWidget(GuideTreeWidget):
 		                                       bubble.top() + (bubble.height() - size) // 2, size, size))
 		text_left = bubble.left() + 2 * self.DETAIL_MARGIN + size
 		painter.setFont(self.font())
-		painter.setPen(QColor(self.DETAIL_COLOR))
+		painter.setPen(self.descriptionColor(option.palette))
 		painter.drawText(QRect(text_left, bubble.top() + self.DETAIL_MARGIN, self._detailTextWidth(index),
 		                       bubble.height() - 2 * self.DETAIL_MARGIN),
 		                 Qt.TextWordWrap | Qt.AlignVCenter, index.siblingAtColumn(0).data(self.DETAIL_ROLE))

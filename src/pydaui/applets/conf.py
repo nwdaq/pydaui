@@ -697,9 +697,6 @@ class ConfTreeWidget(DetailTreeWidget):
 	#: Colour of the flags.
 	FLAGS_COLOR = '#999'
 
-	#: Colour of the brief descriptions, not to dominate over the values.
-	BRIEF_COLOR = '#444'
-
 	#: Colour of a value whose last write failed.
 	WRITE_FAILED_COLOR = '#c0392b'
 
@@ -767,7 +764,7 @@ class ConfTreeWidget(DetailTreeWidget):
 				node['brief'],
 			])
 			item.setForeground(self.FLAGS_COLUMN, QColor(self.FLAGS_COLOR))
-			item.setForeground(self.BRIEF_COLUMN, QColor(self.BRIEF_COLOR))
+			item.setForeground(self.BRIEF_COLUMN, self.descriptionColor())
 			# The full description, the brief one is cut to the column width.
 			item.setToolTip(self.BRIEF_COLUMN, node['detail'] or node['brief'])
 			item.setData(0, self.PATH_ROLE, node['path'])
