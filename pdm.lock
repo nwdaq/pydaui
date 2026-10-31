@@ -757,13 +757,13 @@ files = [
 
 [[package]]
 name = "pynbus2"
-version = "0.6.0"
+version = "0.7.0"
 requires_python = ">=3.10"
 path = "./vendor/pynbus2-0.7.0.tar.gz"
 summary = "Python client library for the plumCore nbus2 messaging bus"
 groups = ["default"]
 files = [
-    {file = "pynbus2-0.6.0.tar.gz", hash = "sha256:d6138d2ab25b4fa41b5b389ddad69102a12c9683b31eef8ce204a87880ac60bc"},
+    {file = "pynbus2-0.7.0.tar.gz", hash = "sha256:98d2689c631dae9b85ff7418cd8ea12372ce518e4dbe6f52fd094cc2606e90cf"},
 ]
 
 [[package]]
