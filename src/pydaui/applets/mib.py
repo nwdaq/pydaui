@@ -39,11 +39,11 @@ import cbor2
 from PySide6.QtCore import *
 from PySide6.QtWidgets import *
 from PySide6.QtGui import *
+from pynbus2.flash import FlashClient, FlashError
 from pynbus2.services import flash as flash_service
 
 from pydaui.applets import conf
-from pydaui.applets.flash import FlashClient, _Operation, format_size, interface_mtu
-from pydaui.connection import SocketConnection
+from pydaui.applets.flash import _Operation, format_size
 from pydaui.files import display_name, read_file, write_file
 from pydaui.ui.helpers import AppletWindow, DauiButton, WrappedLabel
 from pydaui.ui.icons import Icons
@@ -349,16 +349,11 @@ def parse_schema(data):
 def probe(connection, interface):
 	"""The name of the MIB partition on the flash ``interface`` of the device, ``None`` if it has none. It
 	asks the device, run it off the GUI thread."""
-	socket = connection.nbus.socket(interface, flash_service.MAIN_EP)
 	try:
-		client = FlashClient(SocketConnection(socket))
-		try:
-			client.info(MIB_PARTITION)
-		except ValueError:
-			return None
-		return MIB_PARTITION
-	finally:
-		socket.close()
+		connection.flashClient(interface).info(MIB_PARTITION)
+	except FlashError:
+		return None
+	return MIB_PARTITION
 
 
 class _NodeItem(QTreeWidgetItem):
@@ -1448,8 +1443,9 @@ class MibEditor(QWidget):
 
 class MibWindow(AppletWindow):
 	"""The MIB editor of the MIB partition on an interface speaking the flash protocol on the connected
-	device. It opens its own side connection to the interface, closed with the window. The window closes when
-	the device is disconnected."""
+	device. It talks over the side connection to the interface shared with the other applets (see
+	:meth:`PyDauiConnection.sharedSide`), the device serves a single session per interface. The window closes
+	when the device is disconnected."""
 
 	def __init__(self, connection, interface, context):
 		super().__init__()
@@ -1457,13 +1453,12 @@ class MibWindow(AppletWindow):
 		self.setAttribute(Qt.WA_DeleteOnClose)
 		# The context is the name of the MIB partition, see probe().
 		self._logger.info(f'opening the MIB editor, partition {context!r} on interface {interface!r}')
-		self._side = connection.connectSide(interface, flash_service.MAIN_EP)
 		self._connection = connection
 		connection.connectionChanged.connect(self._connectionChanged)
 
 		self.setWindowTitle(self.tr('MIB editor (%s)') % interface)
 		self.setWindowIcon(Icons.chip())
-		self._editor = MibEditor(FlashClient(self._side, interface_mtu(connection, interface)), context)
+		self._editor = MibEditor(connection.flashClient(interface), context)
 		self.setWidget(self._editor)
 		self.resize(1000, 550)
 
@@ -1477,5 +1472,4 @@ class MibWindow(AppletWindow):
 			self._connection.connectionChanged.disconnect(self._connectionChanged)
 			self._connection = None
 			self._editor.abort()
-			self._side.disconnectUri()
 		super().closeEvent(event)

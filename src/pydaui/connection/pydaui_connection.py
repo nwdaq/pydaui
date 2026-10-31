@@ -21,18 +21,10 @@ import logging
 import threading
 
 import pynbus2
+from pynbus2.flash import FlashClient
 from PySide6.QtCore import QObject, Signal, Slot
 
 from pydaui import bluetooth
-
-
-class SocketConnection:
-	"""What the protocol clients (e.g. the flash and conf clients) need of a connection, over a bare
-	pynbus2 socket. For a short exchange off the GUI thread, without a tracked side connection."""
-
-	def __init__(self, socket):
-		self.socket = socket
-		self.lock = threading.Lock()
 
 
 class PyDauiConnection(QObject):
@@ -69,6 +61,8 @@ class PyDauiConnection(QObject):
 		# The side connections shared by everything talking to an interface, by its name.
 		self._shared = {}
 		self._shared_lock = threading.Lock()
+		# The flash client talking over this side connection, see flashClient().
+		self._flash = None
 
 	def connectUri(self, uri):
 		"""Connect to ``uri``, blocking until connected. Raises when connecting fails."""
@@ -243,6 +237,17 @@ class PyDauiConnection(QObject):
 				side = self.connectSide(name, 0)
 				self._shared[name] = side
 			return side
+
+	def flashClient(self, name):
+		"""The :class:`pynbus2.flash.FlashClient` of the flash interface ``name`` shared by everything talking
+		to it, over its :meth:`sharedSide`. The client serializes the requests and the sessions on the opened
+		partitions of its users. It may be called from any thread."""
+		side = self.sharedSide(name)
+		with self._shared_lock:
+			if side._flash is None:
+				mtu = next((desc.get('mtu') for n, desc in self._interfaces if n == name), None)
+				side._flash = FlashClient(side.socket, mtu)
+			return side._flash
 
 	def findInterface(self, protocol):
 		"""The name of the topmost discovered interface speaking ``protocol``: the one with the fewest path

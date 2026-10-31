@@ -9,11 +9,10 @@
 size and a map of the used blocks with the usage.
 
 It talks to an interface speaking the ``flash`` protocol (plumCore services/nbus-flash, or the virtual
-flash service of the pynbus2 ``swd`` transport). Every request is a round trip to the device, so the
-partitions are loaded off the GUI thread.
+flash service of the pynbus2 ``swd`` transport) with a :class:`pynbus2.flash.FlashClient`. Every request is
+a round trip to the device, so the partitions are loaded off the GUI thread.
 """
 
-import contextlib
 import io
 import logging
 import os
@@ -21,10 +20,10 @@ import shutil
 import tempfile
 import threading
 
-import cbor2
 from PySide6.QtCore import *
 from PySide6.QtWidgets import *
 from PySide6.QtGui import *
+from pynbus2.flash import Aborted, FlashClient
 from pynbus2.services import flash as flash_service
 
 from pydaui.files import display_name, read_file, write_file
@@ -36,10 +35,6 @@ from pydaui.ui.progress_window import ByteFormat, ProgressWindow
 PROTOCOL = flash_service.PROTOCOL
 
 
-class Aborted(Exception):
-	"""A flash operation was aborted."""
-
-
 def format_size(size):
 	"""``size`` in bytes as a short human readable text in the largest unit it has at least one of, e.g.
 	``64 KiB``, with a decimal if it is not a whole number of them, e.g. ``100.0 KiB``."""
@@ -49,244 +44,6 @@ def format_size(size):
 		exp += 1
 	value = size / 1024 ** exp
 	return f'{size // 1024 ** exp} {units[exp]}' if size % 1024 ** exp == 0 else f'{value:.1f} {units[exp]}'
-
-
-class FlashClient:
-	"""flash protocol client over a :class:`~pydaui.connection.PyDauiConnection` connected to a flash
-	interface. Requests are serialized, so the client may be used from several threads."""
-
-	#: Number of attempts of a request before giving up.
-	RETRIES = 10
-
-	#: How long the usage estimate may take, in seconds. It reads every erase block of the partition.
-	USAGE_TIMEOUT = 10.0
-
-	#: How long erasing a single erase block may take, in seconds.
-	ERASE_TIMEOUT = 5.0
-
-	#: Number of attempts to erase a block. Erasing a block again is harmless.
-	ERASE_RETRIES = 3
-
-	#: Size of the blocks read and written at once. The device accepts up to NBUS_FLASH_BLOCK_LEN (256 B),
-	#: but the proto-dgtext serial link caps a whole datagram at 256 B including the nbus2 header and the
-	#: CBOR framing, so 128 B works on every transport (as in plumCore tools/proto-nbus-flash.py).
-	TRANSFER_BLOCK = 128
-
-	#: Room for the request framing in a message, the largest block is the interface MTU less this (as in
-	#: the firmware, NBUS_FLASH_RX_BUF_LEN - NBUS_FLASH_BLOCK_LEN).
-	FRAMING = 64
-
-	def __init__(self, connection, mtu=None):
-		"""``mtu`` is the MTU the flash interface advertises. It allows writing pages larger than
-		:attr:`TRANSFER_BLOCK` at once, e.g. the whole flash algorithm pages over a debug probe."""
-		self._connection = connection
-		# Shared by the clients on the same connection.
-		self._lock = connection.lock
-		self._max_block = mtu - self.FRAMING if mtu else flash_service.BLOCK_LEN
-
-	def call(self, req: dict, timeout=None, retries=None):
-		"""Send a request and return the decoded response map. Raises ``ValueError`` if there is no valid
-		response or it reports an error.
-
-		Without ``timeout`` the retransmit interval suits the transport, e.g. a BLE link is much slower
-		than UDP.
-		"""
-		with self._lock:
-			sock = self._connection.socket
-			if sock is None:
-				raise ValueError('not connected')
-			reply = sock.request(cbor2.dumps(req), timeout=timeout or sock.request_timeout,
-			                     retries=retries or self.RETRIES)
-		if reply is None:
-			raise ValueError('no response')
-		try:
-			r = cbor2.loads(reply)
-		except Exception:
-			raise ValueError('invalid response')
-		if not isinstance(r, dict):
-			raise ValueError('invalid response')
-		if r.get('err'):
-			raise ValueError(r['err'])
-		return r
-
-	def list(self):
-		"""The names of the flash partitions on the device."""
-		return [d.get('n', '') for d in self.call({'c': 'list'}).get('d', [])]
-
-	def info(self, name):
-		"""The geometry of the partition ``name`` as ``(size, erase block size, page size)``. The erase
-		block size is the smallest one, which the usage is estimated in, the page size the smallest
-		programmable unit; each ``None`` if the partition cannot be erased or written."""
-		sizes = [(s.get('s', 0), s.get('ops', 0)) for s in self.call({'c': 'info', 'n': name}).get('sizes', [])]
-		if not sizes:
-			raise ValueError('no sizes reported')
-		erase_sizes = [size for size, ops in sizes[1:] if ops & flash_service.OPS_ERASE]
-		page_sizes = [size for size, ops in sizes[1:] if ops & flash_service.OPS_WRITE]
-		return sizes[0][0], (erase_sizes[-1] if erase_sizes else None), (page_sizes[-1] if page_sizes else None)
-
-	def usage(self, name, size, erase_size):
-		"""The erase blocks of the partition ``name`` in use as ``(share, ranges)``: the share from 0 to 1
-		and the used ranges as ``(start, end)`` tuples relative to the partition size, in address order.
-		``size`` and ``erase_size`` are the partition geometry from :meth:`info`.
-
-		The flash service supports a single session, so the partition is opened only for the estimate.
-		"""
-		with self._session(name) as sid:
-			# The device replies once the estimate is done, retransmits would only queue more of them.
-			r = self.call({'c': 'usage', 'sid': sid}, timeout=self.USAGE_TIMEOUT, retries=1)
-		ba = r.get('ba', 1)
-		bitmap = r.get('b', b'')
-		blocks = size // erase_size
-		if not blocks:
-			return 0.0, []
-		# Each bit covers ba blocks, the last one possibly fewer. Join the adjacent used ones to ranges.
-		used = 0
-		ranges = []
-		for bit in range(-(-blocks // ba)):
-			if bit // 8 >= len(bitmap) or not bitmap[bit // 8] & (1 << (bit % 8)):
-				continue
-			start, end = bit * ba, min(blocks, (bit + 1) * ba)
-			used += end - start
-			if ranges and ranges[-1][1] == start:
-				ranges[-1][1] = end
-			else:
-				ranges.append([start, end])
-		return used / blocks, [(start / blocks, end / blocks) for start, end in ranges]
-
-	def erase(self, name, size, erase_size, progress=None, abort=None):
-		"""Erase the whole partition ``name`` one erase block after another. ``size`` and ``erase_size``
-		are the partition geometry from :meth:`info`.
-
-		``progress`` is called with the number of bytes erased so far after each block. Setting the
-		``abort`` event stops erasing before the next block with :class:`Aborted`. Raises ``ValueError``
-		with the reason if erasing fails.
-		"""
-		with self._session(name) as sid:
-			self._erase(sid, size, erase_size, progress, abort)
-
-	def _erase(self, sid, size, erase_size, progress, abort):
-		for addr in range(0, size, erase_size):
-			if abort is not None and abort.is_set():
-				raise Aborted()
-			length = min(erase_size, size - addr)
-			try:
-				self.call({'c': 'erase', 'sid': sid, 'addr': addr, 'len': length},
-				          timeout=self.ERASE_TIMEOUT, retries=self.ERASE_RETRIES)
-			except ValueError as e:
-				raise ValueError(f'erasing at 0x{addr:08x} failed: {e}')
-			if progress is not None:
-				progress(addr + length)
-
-	def write(self, name, size, erase_size, page_size, data, progress=None, abort=None, stage=None):
-		"""Write ``data`` to the start of the partition ``name``, erasing the whole partition first and
-		reading the data back to verify it at the end. ``size``, ``erase_size`` and ``page_size`` are the
-		partition geometry from :meth:`info`. The data is padded with 0xff to whole pages.
-
-		``stage`` is called as ``stage(what, total)`` when erasing (``'erase'``, the partition size),
-		writing and verifying (``'write'`` and ``'verify'``, the padded data size) starts, ``progress`` with the bytes done so far in
-		the stage. ``abort`` is like in :meth:`erase`. Raises ``ValueError`` with the reason if it fails.
-		"""
-		# Whole pages in each transfer block, a single page if it is larger.
-		block = page_size * max(1, self.TRANSFER_BLOCK // page_size)
-		if block > self._max_block:
-			raise ValueError(f'page size {page_size} B is larger than the {self._max_block} B blocks the interface takes')
-		data = bytes(data) + b'\xff' * (-len(data) % page_size)
-		if len(data) > size:
-			raise ValueError(f'{len(data)} B do not fit the partition of {size} B')
-
-		with self._session(name) as sid:
-			if stage is not None:
-				stage('erase', size)
-			self._erase(sid, size, erase_size, progress, abort)
-			if stage is not None:
-				stage('write', len(data))
-			for addr in range(0, len(data), block):
-				if abort is not None and abort.is_set():
-					raise Aborted()
-				chunk = data[addr:addr + block]
-				try:
-					self.call({'c': 'write', 'sid': sid, 'addr': addr, 'len': len(chunk), 'd': chunk})
-				except ValueError as e:
-					# If the reply to a write was lost, its retransmit fails as the block is already
-					# programmed. The block is fine if it reads back as written.
-					if self._readBlock(sid, addr, len(chunk), check=False) != chunk:
-						raise ValueError(f'writing at 0x{addr:08x} failed: {e}')
-				if progress is not None:
-					progress(addr + len(chunk))
-
-			if stage is not None:
-				stage('verify', len(data))
-			for addr in range(0, len(data), self.TRANSFER_BLOCK):
-				if abort is not None and abort.is_set():
-					raise Aborted()
-				expected = data[addr:addr + self.TRANSFER_BLOCK]
-				got = self._readBlock(sid, addr, len(expected))
-				if got != expected:
-					first = next(i for i in range(len(expected)) if got[i] != expected[i])
-					hint = ', the block reads as erased' if got == b'\xff' * len(got) else ''
-					raise ValueError(f'verification failed at 0x{addr + first:08x}: read 0x{got[first]:02x}, '
-					                 f'expected 0x{expected[first]:02x}{hint}')
-				if progress is not None:
-					progress(addr + len(expected))
-
-	def read(self, name, size, file, progress=None, abort=None, stop_sector=None):
-		"""Read the whole partition ``name`` of ``size`` bytes into the binary ``file`` object, one block of
-		:attr:`TRANSFER_BLOCK` bytes after another. ``progress`` and ``abort`` are like in :meth:`erase`.
-		Raises ``ValueError`` with the reason if reading fails.
-
-		With ``stop_sector``, a sector size in bytes (e.g. the erase size), reading ends after the first whole
-		sector aligned to it which is erased, all its bytes 0xff: the rest of the partition is taken as
-		erased, e.g. after the data written to its start. The sector is written to ``file`` too."""
-		# The bytes read of the current sector.
-		sector = bytearray()
-		with self._session(name) as sid:
-			for addr in range(0, size, self.TRANSFER_BLOCK):
-				if abort is not None and abort.is_set():
-					raise Aborted()
-				length = min(self.TRANSFER_BLOCK, size - addr)
-				data = self._readBlock(sid, addr, length)
-				file.write(data)
-				if progress is not None:
-					progress(addr + length)
-				if stop_sector:
-					sector += data
-					while len(sector) >= stop_sector:
-						if sector.count(0xff, 0, stop_sector) == stop_sector:
-							return
-						del sector[:stop_sector]
-
-	def _readBlock(self, sid, addr, length, check=True):
-		"""Read ``length`` bytes at ``addr`` in the session ``sid``. Raises ``ValueError`` if it fails, or
-		returns ``None`` instead if not ``check``."""
-		try:
-			r = self.call({'c': 'read', 'sid': sid, 'addr': addr, 'len': length})
-			data = r.get('d')
-			# A late reply to a retransmitted request may answer an earlier one.
-			if r.get('addr') != addr or not isinstance(data, bytes) or len(data) != length:
-				raise ValueError('unexpected response')
-		except ValueError as e:
-			if not check:
-				return None
-			raise ValueError(f'reading at 0x{addr:08x} failed: {e}')
-		return data
-
-	@contextlib.contextmanager
-	def _session(self, name):
-		"""Open the partition ``name`` for the ``with`` block, giving the session id. The flash service
-		supports a single session, opening one closes the previous one."""
-		sid = self.call({'c': 'open', 'n': name})['sid']
-		try:
-			yield sid
-		finally:
-			try:
-				self.call({'c': 'close', 'sid': sid})
-			except ValueError:
-				pass
-
-
-def interface_mtu(connection, name):
-	"""The MTU the interface ``name`` of the ``connection`` advertises, ``None`` if it advertises none."""
-	return next((desc.get('mtu') for n, desc in connection.interfaces if n == name), None)
 
 
 class _PartitionLoader(QObject):
@@ -975,8 +732,9 @@ class FlashPartitions(QWidget):
 class FlashWindow(AppletWindow):
 	"""The flash partitions served by an interface speaking the flash protocol on the connected device.
 
-	It opens its own side connection to the interface, closed with the window. The window closes when
-	the device is disconnected.
+	It talks over the side connection to the interface shared with the other applets (see
+	:meth:`PyDauiConnection.sharedSide`), the device serves a single session per interface. The window closes
+	when the device is disconnected.
 	"""
 
 	def __init__(self, connection, name):
@@ -985,12 +743,11 @@ class FlashWindow(AppletWindow):
 		self.setAttribute(Qt.WA_DeleteOnClose)
 
 		self._logger.info(f'opening the flash partitions on interface {name!r}')
-		self._side = connection.connectSide(name, flash_service.MAIN_EP)
 		self._connection = connection
 		connection.connectionChanged.connect(self._connectionChanged)
 
 		self.setWindowTitle(f'Flash ({name})')
-		self._partitions = FlashPartitions(FlashClient(self._side, interface_mtu(connection, name)))
+		self._partitions = FlashPartitions(connection.flashClient(name))
 		self.setWidget(self._partitions)
 		self.resize(800, 400)
 
@@ -1004,6 +761,4 @@ class FlashWindow(AppletWindow):
 			self._connection.connectionChanged.disconnect(self._connectionChanged)
 			self._connection = None
 			self._partitions.abort()
-			# Already disconnected together with the device connection, if that is why it closes.
-			self._side.disconnectUri()
 		super().closeEvent(event)

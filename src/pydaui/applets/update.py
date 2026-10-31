@@ -46,12 +46,12 @@ from PySide6.QtWidgets import *
 from PySide6.QtGui import *
 from elftools.common.exceptions import ELFError
 from elftools.elf.elffile import ELFFile
+from pynbus2.flash import FlashError
 from pynbus2.services import flash as flash_service
 
 from pydaui import build_info, tls
 from pydaui.applets import conf
-from pydaui.connection import SocketConnection
-from pydaui.applets.flash import FlashClient, _Operation, can_write, format_size, interface_mtu
+from pydaui.applets.flash import _Operation, can_write, format_size
 from pydaui.ui.credentials_window import CredentialsWindow
 from pydaui.ui.helpers import Admonition, AppletWindow, DauiButton, StyledTreeWidget
 from pydaui.ui.icons import Icons
@@ -89,20 +89,16 @@ def probe(connection, interface):
 	the first of them only, so ``update`` is asked for by name and the listed partitions with ``update`` in
 	their names are tried too.
 	"""
-	socket = connection.nbus.socket(interface, flash_service.MAIN_EP)
-	try:
-		client = FlashClient(SocketConnection(socket))
-		names = [UPDATE_PARTITION] + [name for name in client.list() if UPDATE_PARTITION in name]
-		for name in dict.fromkeys(names):
-			try:
-				size, erase, page = client.info(name)
-			except ValueError:
-				continue
-			if can_write({'size': size, 'erase': erase, 'page': page}):
-				return name
-		return None
-	finally:
-		socket.close()
+	client = connection.flashClient(interface)
+	names = [UPDATE_PARTITION] + [name for name in client.list() if UPDATE_PARTITION in name]
+	for name in dict.fromkeys(names):
+		try:
+			size, erase, page = client.info(name)
+		except FlashError:
+			continue
+		if can_write({'size': size, 'erase': erase, 'page': page}):
+			return name
+	return None
 
 
 def is_firmware(entry):
@@ -529,10 +525,9 @@ class UpdatePanel(QWidget):
 		self._credentials = {}
 		# The URL of the repository the list shows.
 		self._shown = None
-		# The firmware write running, its progress window and side connection, None when there is none.
+		# The firmware write running and its progress window, None when there is none.
 		self._operation = None
 		self._progress = None
-		self._side = None
 		# Whether the device can be reset, None until it is known.
 		self._can_reset = None
 		self._reset_check = None
@@ -775,11 +770,10 @@ class UpdatePanel(QWidget):
 			return
 
 		try:
-			self._side = self._connection.connectSide(self._interface, flash_service.MAIN_EP)
+			client = self._connection.flashClient(self._interface)
 		except Exception as e:
 			QMessageBox.warning(self, self.tr('Write firmware update'), self.tr('Cannot open %s: %s') % (self._interface, e))
 			return
-		client = FlashClient(self._side, interface_mtu(self._connection, self._interface))
 		partition = self._partition
 
 		def run(progress, abort, stage):
@@ -811,8 +805,6 @@ class UpdatePanel(QWidget):
 			self._operation = None
 			self._progress.finish()
 			self._progress = None
-			self._side.disconnectUri()
-			self._side = None
 			self._updateButtons()
 			if aborted:
 				self._logger.info(f'writing {name} aborted')
@@ -886,9 +878,6 @@ class UpdatePanel(QWidget):
 			self._operation = None
 			self._progress.finish()
 			self._progress = None
-			# Already disconnected together with the device connection, if that is why it closes.
-			self._side.disconnectUri()
-			self._side = None
 
 
 class UpdateWindow(AppletWindow):

@@ -31,11 +31,12 @@ import pyqtgraph as pg
 from PySide6.QtCore import *
 from PySide6.QtWidgets import *
 from PySide6.QtGui import *
+from pynbus2.flash import Aborted, FlashError
 from pynbus2.services import flash as flash_service
 
 from pydaui import build_info, compensation, quantities
 from pydaui.applets import conf
-from pydaui.applets.flash import Aborted, FlashClient, _Operation, can_read, can_write, format_size, interface_mtu
+from pydaui.applets.flash import _Operation, can_read, can_write, format_size
 from pydaui.files import display_name, read_file, write_file
 from pydaui.ui.helpers import ANDROID, Admonition, AppletWindow, DauiButton, StyledTreeWidget, TabScrollArea, WrappedLabel
 from pydaui.ui.icons import Icons
@@ -420,7 +421,7 @@ class _PartitionLister(QObject):
 				try:
 					size, erase, page = self._client.info(name)
 					partitions.append((name, {'size': size, 'erase': erase, 'page': page}))
-				except ValueError:
+				except FlashError:
 					partitions.append((name, None))
 		except Exception as e:
 			self.failed.emit(str(e))
@@ -3625,8 +3626,9 @@ class CalibrationWindow(AppletWindow):
 	"""The calibration certificate of the connected device, kept in a flash partition served by an interface
 	speaking the flash protocol.
 
-	It opens its own side connection to the interface, closed with the window. The window closes when the
-	device is disconnected.
+	It talks over the side connection to the interface shared with the other applets (see
+	:meth:`PyDauiConnection.sharedSide`), the device serves a single session per interface. The window closes
+	when the device is disconnected.
 	"""
 
 	#: The size of the window, unless its content needs more.
@@ -3638,12 +3640,11 @@ class CalibrationWindow(AppletWindow):
 		self.setAttribute(Qt.WA_DeleteOnClose)
 
 		self._logger.info(f'opening the calibration certificate on interface {name!r}')
-		self._side = connection.connectSide(name, flash_service.MAIN_EP)
 		self._connection = connection
 		connection.connectionChanged.connect(self._connectionChanged)
 
 		self.setWindowTitle(f'Calibration certificate ({name})')
-		self._certificate = CalibrationCertificate(FlashClient(self._side, interface_mtu(connection, name)), settings,
+		self._certificate = CalibrationCertificate(connection.flashClient(name), settings,
 		                                           self._firmwareVersionReader(connection))
 		self.setWidget(self._certificate)
 		# Whether the window was sized to its content, when first shown.
@@ -3677,6 +3678,4 @@ class CalibrationWindow(AppletWindow):
 			self._connection = None
 			self._certificate.abort()
 			self._certificate.closeWindows()
-			# Already disconnected together with the device connection, if that is why it closes.
-			self._side.disconnectUri()
 		super().closeEvent(event)
