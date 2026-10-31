@@ -66,8 +66,8 @@ def format_uptime(seconds):
 class DeviceStatus(QWidget):
 	"""The heap usage and the uptime of the connected device, each with its icon, read from its
 	configuration tree every :attr:`INTERVAL`. :attr:`available` tells whether there is a status to show,
-	there is none when the device has no configuration tree. A device which does not respond to a read, sent
-	once without retransmitting, or whose transport fails is dropped, see :meth:`PyDauiConnection.drop`."""
+	there is none when the device has no configuration tree. A device whose link was lost is dropped, see
+	:attr:`PyDauiConnection.linkLost`. One which merely does not respond stays connected."""
 
 	#: How often the status is read, in milliseconds.
 	INTERVAL = 5000
@@ -82,7 +82,7 @@ class DeviceStatus(QWidget):
 
 	#: Delivers the (uri, values of PATHS) read off the GUI thread.
 	_read = Signal(str, list)
-	#: Delivers the uri of the device the read failed on.
+	#: Delivers the uri of the device whose link was lost.
 	_failed = Signal(str)
 
 	def __init__(self, connection):
@@ -137,13 +137,14 @@ class DeviceStatus(QWidget):
 
 		def read():
 			try:
-				values = conf.read_values(self._connection, interface, self.PATHS, retries=1)
+				values = conf.read_values(self._connection, interface, self.PATHS)
 			except Exception as e:
-				# A timeout, or the transport failing, e.g. the session closed by the device or its BLE link lost.
-				# A node which cannot be read is None instead.
-				self._logger.warning(f'cannot read the device status: {e!r}')
-				self._failed.emit(uri)
-				return
+				if self._connection.linkLost:
+					self._logger.warning(f'cannot read the device status, the link is lost: {e}')
+					self._failed.emit(uri)
+					return
+				self._logger.debug(f'cannot read the device status: {e}')
+				values = [None] * len(self.PATHS)
 			self._read.emit(uri, values)
 
 		threading.Thread(target=read, name='device-status', daemon=True).start()

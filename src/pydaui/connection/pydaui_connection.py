@@ -40,7 +40,7 @@ class PyDauiConnection(QObject):
 	connectionChanged = Signal(object)
 	#: (uri, error message) when :meth:`connectUriAsync` fails.
 	connectFailed = Signal(str, str)
-	#: (uri) when the device stopped responding and was disconnected with :meth:`drop`, after
+	#: (uri) when the link to the device was lost and it was disconnected with :meth:`drop`, after
 	#: :attr:`connectionChanged`.
 	connectionLost = Signal(str)
 	#: Delivers the (attempt, uri, result) of the thread of :meth:`connectUriAsync` to the GUI thread.
@@ -189,13 +189,28 @@ class PyDauiConnection(QObject):
 		self._shared = {}
 		self.connectionChanged.emit(None)
 
+	@property
+	def linkLost(self):
+		"""Whether the transport knows the link to the device is gone, e.g. the BLE peripheral disconnected
+		(reset, out of range). Not a timeout, a device which merely does not respond is still linked. Only the
+		BLE transports can tell, the others are never lost. It may be called from any thread."""
+		nbus = self._nbus
+		# pynbus2 has no public API for it, the BLE transports keep their SimplePyBLE peripheral.
+		peripheral = getattr(getattr(nbus, '_transport', None), '_peripheral', None)
+		if peripheral is None:
+			return False
+		try:
+			return not peripheral.is_connected()
+		except Exception:
+			return False
+
 	def drop(self):
-		"""Disconnect the device which stopped responding, whichever transport it is connected over, and
-		emit :attr:`connectionLost` so it can be connected again."""
+		"""Disconnect the device whose link was lost (see :attr:`linkLost`) and emit :attr:`connectionLost`
+		so it can be connected again."""
 		uri = self._uri
 		if uri is None:
 			return
-		self._logger.warning(f'{uri} stopped responding')
+		self._logger.warning(f'the link to {uri} was lost')
 		self.disconnectUri()
 		self.connectionLost.emit(uri)
 

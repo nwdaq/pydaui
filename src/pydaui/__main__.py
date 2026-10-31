@@ -348,7 +348,7 @@ class DauiApplication(QApplication):
 
 	@Slot(str)
 	def _reconnect(self, uri):
-		"""Connect the device which stopped responding again, showing the connecting window. The connect
+		"""Connect the device whose link was lost again, showing the connecting window. The connect
 		window opens when it fails or is cancelled."""
 		# Not the area of the connect window, it is taken out of it while hidden.
 		ConnectingWindow.start(self._connection, uri, self._main_window.centralWidget())
