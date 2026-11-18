@@ -325,7 +325,7 @@ EDITABLE_TYPES = (CONF_F, CONF_U32, CONF_S32, CONF_U16, CONF_S16, CONF_U8, CONF_
 
 def is_editable(type_int, flags):
 	"""Whether a node of the given type and flags holds a value the user can change."""
-	return bool(type_int in EDITABLE_TYPES and flags & CONF_WRITE and not flags & (CONF_CONST | CONF_STATUS))
+	return bool(type_int in EDITABLE_TYPES and flags & CONF_WRITE and not flags & CONF_CONST)
 
 
 class _ValueWriter(QObject):
