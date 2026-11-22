@@ -134,6 +134,31 @@ class Icons:
 		"""A collapse all icon: two stacked boxes, the front one with a minus sign."""
 		return Icons._stackedBoxes('M5.75 14.75 H12.75')
 
+	@staticmethod
+	def _sheetArrow(sheet_x, arrow_x, tip_x):
+		"""A white sheet with a folded corner and lines of text, its left edge at ``sheet_x``, and a thick
+		arrow pointing right from ``arrow_x`` to ``tip_x`` over it."""
+		x = sheet_x
+		cy = 15
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<g stroke="{Icons.PRIMARY}" stroke-width="1.1" stroke-linejoin="round">
+				<path fill="{Icons.WHITE}" d="M{x} 2.5 H{x + 8} L{x + 12.5} 7 V21.5 H{x} Z"/>
+				<path fill="{Icons.PRIMARY_LIGHT}" d="M{x + 8} 2.5 V7 H{x + 12.5} Z"/>
+				<path d="M{x + 2.5} 7 H{x + 6} M{x + 2.5} 10 H{x + 10}" stroke="{Icons.GRAY}" stroke-width="0.9"/>
+				<path fill="{Icons.PRIMARY_LIGHT}" d="M{arrow_x} {cy - 1.7} H{tip_x - 5} V{cy - 4.8} L{tip_x} {cy} L{tip_x - 5} {cy + 4.8} V{cy + 1.7} H{arrow_x} Z"/>
+			</g>
+		</svg>""")
+
+	@staticmethod
+	def importFile():
+		"""An import icon: an arrow pointing into a sheet from the left."""
+		return Icons._sheetArrow(9, 1.5, 15.5)
+
+	@staticmethod
+	def exportFile():
+		"""An export icon: an arrow pointing out of a sheet to the right."""
+		return Icons._sheetArrow(2.5, 8.5, 22.5)
+
 	#: The number of frames of the spinner animation.
 	SPINNER_FRAMES = 8
 

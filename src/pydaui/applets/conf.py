@@ -14,16 +14,19 @@ off the GUI thread, as every request is a round trip to the device.
 """
 
 import logging
+import textwrap
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
 import cbor2
+import json5
 from PySide6.QtCore import *
 from PySide6.QtWidgets import *
 from PySide6.QtGui import *
 
 from pydaui.ui.helpers import AppletWindow, DauiButton, blend_colors
 from pydaui.ui.icons import Icons
+from pydaui.ui.progress_window import ProgressWindow
 from pydaui.ui.tree import DetailTreeWidget, RowDelegate
 
 
@@ -309,6 +312,196 @@ class ConfClient:
 		if r.get('err'):
 			raise ValueError(r.get('err'))
 
+	def _to_json(self, val, path):
+		"""The value read from the node at path as a JSON value: an enum by its name, a byte string in hex."""
+		if isinstance(val, bytes):
+			return val.hex()
+		names = self.enum_names(path)
+		if names is not None and isinstance(val, int) and not isinstance(val, bool) and 0 <= val < len(names):
+			return names[val]
+		return val
+
+	def _from_json(self, type_int, val, path):
+		"""The JSON value ``val`` as a value of the given conf type for the node at path. Raises
+		``ValueError`` if it does not fit the type."""
+		is_int = isinstance(val, int) and not isinstance(val, bool)
+		if type_int == CONF_ENUM:
+			names = self.enum_names(path) or []
+			if isinstance(val, str) and val in names:
+				return names.index(val)
+			if is_int and 0 <= val < len(names):
+				return val
+			raise ValueError('not one of %s' % ', '.join(names) if names else 'not a valid enum value')
+		if type_int == CONF_F and (is_int or isinstance(val, float)):
+			return float(val)
+		if type_int in (CONF_U32, CONF_S32, CONF_U16, CONF_S16, CONF_U8, CONF_S8) and is_int:
+			return val
+		if type_int == CONF_B and isinstance(val, bool):
+			return val
+		if type_int == CONF_STR and isinstance(val, str):
+			return val
+		if type_int == CONF_BSTR and isinstance(val, str):
+			try:
+				return bytes.fromhex(val)
+			except ValueError:
+				raise ValueError('not a hex byte string')
+		raise ValueError('%s expected, got %s' % (TYPE_NAMES.get(type_int, str(type_int)), json5.dumps(val)))
+
+	def export_tree(self, progress, aborted, path=None):
+		"""Read the whole tree below path recursively, keeping the values saved on the device (see
+		:func:`is_saved`).
+
+		Returns a list of entries ``{'name', 'brief', 'detail'}`` with a ``value`` (leaves) or the
+		``children`` entries (subtrees with something to export). ``progress(path, False)`` is called before
+		each node is read and ``progress(path, True)`` once its value is exported, ``aborted()`` is checked between the nodes and stops the export with :class:`Aborted`.
+		"""
+		path = path or []
+		entries = []
+		for ch in self._children(path):
+			if aborted():
+				raise Aborted()
+			name = ch.get('n', '')
+			type = ch.get('t', CONF_NONE)
+			child_path = path + [name]
+			progress(child_path, False)
+			entry = {'name': name}
+			if type == CONF_SUBTREE:
+				children = self.export_tree(progress, aborted, child_path)
+				if not children:
+					continue
+				entry['children'] = children
+			elif is_saved(type, ch.get('f', 0)):
+				if type == CONF_ENUM:
+					self._load_enum_names(child_path)
+				val = self._read(child_path)
+				if val is None:
+					raise ValueError('reading %s failed' % '/'.join(child_path))
+				entry['value'] = self._to_json(val, child_path)
+			else:
+				continue
+			entry['brief'], entry['detail'] = self.description(child_path)
+			entries.append(entry)
+			if 'value' in entry:
+				progress(child_path, True)
+		return entries
+
+	def import_tree(self, data, progress, aborted, path=None, failures=None):
+		"""Write the values of the nested dict ``data`` to the nodes of the tree below path, matched by
+		their names. Values which cannot be written or are not saved on the device (see :func:`is_saved`)
+		are skipped.
+
+		Returns the list of ``(path, reason)`` of the values skipped. ``progress(written)`` is called after
+		each value with whether it was written, ``aborted()`` is checked between them and stops the import with :class:`Aborted`.
+		"""
+		path = path or []
+		failures = [] if failures is None else failures
+		try:
+			nodes = {ch.get('n', ''): ch for ch in self._children(path)}
+		except ValueError as e:
+			# None of the values below can be written.
+			for leaf_path in leaf_paths(data, path):
+				failures.append((leaf_path, 'reading the tree failed: %s' % e))
+				progress(False)
+			return failures
+		for name, val in data.items():
+			if aborted():
+				raise Aborted()
+			child_path = path + [name]
+			node = nodes.get(name)
+			type = node.get('t', CONF_NONE) if node is not None else None
+			if isinstance(val, dict):
+				if type == CONF_SUBTREE:
+					self.import_tree(val, progress, aborted, child_path, failures)
+				else:
+					reason = 'no such subtree' if node is None else 'not a subtree'
+					for leaf_path in leaf_paths(val, child_path):
+						failures.append((leaf_path, reason))
+						progress(False)
+				continue
+			try:
+				if node is None:
+					raise ValueError('no such item')
+				if type == CONF_SUBTREE:
+					raise ValueError('a subtree, not a value')
+				if not is_editable(type, node.get('f', 0)):
+					raise ValueError('not writable')
+				if not is_saved(type, node.get('f', 0)):
+					raise ValueError('a status value, not a part of the configuration')
+				if type == CONF_ENUM and self.enum_names(child_path) is None:
+					self._load_enum_names(child_path)
+				self.write(child_path, type, self._from_json(type, val, child_path))
+			except ValueError as e:
+				failures.append((child_path, str(e)))
+				progress(False)
+				continue
+			progress(True)
+		return failures
+
+
+class Aborted(Exception):
+	"""The export or import was aborted."""
+
+
+def leaf_paths(data, path=None):
+	"""The paths of the values (not the nested dicts) in the nested dict ``data``, below path."""
+	path = path or []
+	paths = []
+	for name, val in data.items():
+		if isinstance(val, dict):
+			paths += leaf_paths(val, path + [name])
+		else:
+			paths.append(path + [name])
+	return paths
+
+
+#: The width the help strings in the comments of the exported file are wrapped to, the indentation left out.
+JSON5_COMMENT_WIDTH = 100
+
+
+def json5_comment(brief, detail, indent):
+	"""The lines of a ``/* */`` comment block in the style of plumCore C code: the brief help string, an empty
+	line and the detailed one, each line starting with `` * ``. No lines without any help string."""
+	paragraphs = [brief] if brief else []
+	if detail and detail != brief:
+		paragraphs += [''] + detail.split('\n')
+	if not paragraphs:
+		return []
+	lines = [indent + '/*']
+	for paragraph in paragraphs:
+		# A comment in the help string would end the block.
+		paragraph = paragraph.replace('*/', '* /')
+		wrapped = textwrap.wrap(paragraph, JSON5_COMMENT_WIDTH) or ['']
+		lines += [(indent + ' * ' + line).rstrip() for line in wrapped]
+	lines.append(indent + ' */')
+	return lines
+
+
+def format_json5(entries, depth=0):
+	"""The entries of :meth:`ConfClient.export_tree` as a JSON5 document, each item preceded by a comment
+	with its help strings."""
+	indent = '\t' * (depth + 1)
+	lines = ['{'] if depth == 0 else []
+	previous_comment = False
+	for i, entry in enumerate(entries):
+		comment = json5_comment(entry.get('brief'), entry.get('detail'), indent)
+		if i and (comment or previous_comment):
+			# A blank line above and below each item with a comment, the items without any are kept together.
+			lines.append('')
+		previous_comment = bool(comment)
+		lines += comment
+		comma = ',' if i < len(entries) - 1 else ''
+		key = json5.dumps(entry['name'])
+		if 'children' in entry:
+			lines.append('%s%s: {' % (indent, key))
+			lines += format_json5(entry['children'], depth + 1)
+			lines.append('%s}%s' % (indent, comma))
+		else:
+			lines.append('%s%s: %s%s' % (indent, key, json5.dumps(entry['value']), comma))
+	if depth == 0:
+		lines.append('}')
+		return '\n'.join(lines) + '\n'
+	return lines
+
 
 def read_values(connection, interface, paths):
 	"""The values of the conf nodes at ``paths`` (lists of names) on the conf ``interface`` of the
@@ -326,6 +519,13 @@ EDITABLE_TYPES = (CONF_F, CONF_U32, CONF_S32, CONF_U16, CONF_S16, CONF_U8, CONF_
 def is_editable(type_int, flags):
 	"""Whether a node of the given type and flags holds a value the user can change."""
 	return bool(type_int in EDITABLE_TYPES and flags & CONF_WRITE and not flags & CONF_CONST)
+
+
+def is_saved(type_int, flags):
+	"""Whether a node of the given type and flags is a part of the configuration saved on the device, like
+	``conf_cbor_saveable()`` in plumCore services/conf-cbor decides. Status values (e.g. the RTC time) can
+	be written, but are not saved."""
+	return bool(is_editable(type_int, flags) and flags & CONF_READ and not flags & CONF_STATUS)
 
 
 class _ValueWriter(QObject):
@@ -379,6 +579,40 @@ class _JobRunner(QObject):
 			self.failed.emit(str(e))
 			return
 		self.done.emit()
+
+
+class _TreeTask(QObject):
+	"""Runs the export or import ``fn(progress, aborted)`` after the changes queued before it, see
+	:meth:`ConfClient.export_tree` and :meth:`ConfClient.import_tree`. ``fn`` calls ``progress`` with the
+	arguments to emit :attr:`progress` with."""
+
+	progress = Signal(object)
+	done = Signal(object)        # the result of fn
+	failed = Signal(str)
+	aborted = Signal()
+
+	def __init__(self, conf, fn):
+		super().__init__()
+		self._conf = conf
+		self._fn = fn
+		self._abort = threading.Event()
+
+	def start(self):
+		self._conf.submit(self._run)
+
+	def abort(self):
+		self._abort.set()
+
+	def _run(self):
+		try:
+			result = self._fn(lambda *args: self.progress.emit(args), self._abort.is_set)
+		except Aborted:
+			self.aborted.emit()
+			return
+		except Exception as e:
+			self.failed.emit(str(e))
+			return
+		self.done.emit(result)
 
 
 class TextEditor(QLineEdit):
@@ -1080,6 +1314,9 @@ class ConfTree(QWidget):
 		self._tree = ConfTreeWidget(conf)
 		# Keep the job runner alive until its signal has been delivered.
 		self._job = None
+		# The export or import running and its progress window.
+		self._task = None
+		self._progress = None
 
 		self._tb = QToolBar()
 		self._reload = DauiButton(self.tr('Reload'), Icons.refresh())
@@ -1090,11 +1327,21 @@ class ConfTree(QWidget):
 		self._save.setToolTip(self.tr('Save the configuration on the device'))
 		self._save.clicked.connect(lambda: self._runJob('save'))
 		self._tb.addWidget(self._save)
+		self._tb.addSeparator()
+		self._import = DauiButton(self.tr('Import'), Icons.importFile())
+		self._import.setToolTip(self.tr('Write the configuration values from a JSON5 file to the device'))
+		self._import.clicked.connect(self._importFile)
+		self._tb.addWidget(self._import)
+		self._export = DauiButton(self.tr('Export'), Icons.exportFile())
+		self._export.setToolTip(self.tr('Save the configuration values of the device to a JSON5 file'))
+		self._export.clicked.connect(self._exportFile)
+		self._tb.addWidget(self._export)
+		self._tb.addSeparator()
 
 		self._details = QCheckBox(self.tr('Show details'))
 		self._details.setToolTip(self.tr('Show the full description of each configuration item below it'))
-		# Spaced from the buttons like the filter label.
-		self._details.setContentsMargins(6, 0, 0, 0)
+		# Spaced from the separator like the filter label.
+		self._details.setStyleSheet('QCheckBox { margin-left: 6px; }')
 		self._details.toggled.connect(self._tree.setShowDetails)
 		self._tb.addWidget(self._details)
 
@@ -1193,15 +1440,14 @@ class ConfTree(QWidget):
 
 	def _runJob(self, cmd):
 		"""Run the load or save job on the device, the buttons are disabled meanwhile."""
-		if self._job is not None:
+		if self._job is not None or self._task is not None:
 			return
 		# A value being edited is written before saving; loading replaces it with the saved one.
 		self._tree.finishEditing(write=(cmd == 'save'))
 
 		button = self._reload if cmd == 'load' else self._save
 		button.setText(self.tr(self._JOB_TEXT[cmd][1]))
-		self._reload.setEnabled(False)
-		self._save.setEnabled(False)
+		self._setBusy(True)
 
 		self._job = _JobRunner(self._conf, cmd)
 		self._job.done.connect(lambda: self._jobFinished(cmd, None))
@@ -1212,8 +1458,7 @@ class ConfTree(QWidget):
 		self._job = None
 		self._reload.setText(self.tr(self._JOB_TEXT['load'][0]))
 		self._save.setText(self.tr(self._JOB_TEXT['save'][0]))
-		self._reload.setEnabled(True)
-		self._save.setEnabled(True)
+		self._setBusy(False)
 
 		if error is not None:
 			self._logger.warning(f'{cmd} job failed: {error}')
@@ -1225,6 +1470,159 @@ class ConfTree(QWidget):
 		if cmd == 'load':
 			# Show the configuration just loaded.
 			self._tree.refresh()
+
+	def _setBusy(self, busy):
+		"""Disable the buttons starting a job, an export or an import while one runs."""
+		for button in (self._reload, self._save, self._import, self._export):
+			button.setEnabled(not busy)
+
+	#: The file types of the exported configuration.
+	FILE_FILTER = 'JSON5 files (*.json5 *.json);;All files (*)'
+
+	def _exportFile(self):
+		"""Read the whole configuration tree and save its values with their help strings to a JSON5 file."""
+		if self._job is not None or self._task is not None:
+			return
+		path, _filter = QFileDialog.getSaveFileName(self, self.tr('Export configuration'), 'configuration.json5',
+		                                            self.tr(self.FILE_FILTER))
+		if not path:
+			return
+		# The value being edited is exported too.
+		self._tree.finishEditing(write=True)
+		self._logger.info(f'exporting the configuration to {path}')
+		exported = 0
+
+		def progress(node_path, value_exported):
+			nonlocal exported
+			exported += value_exported
+			self._progress.setText(self.tr('Reading the configuration items...\n%s\n\n%d values exported') % (
+				'/'.join(node_path), exported))
+
+		def done(entries):
+			try:
+				with open(path, 'w', encoding='utf-8') as f:
+					f.write(format_json5(entries))
+			except OSError as e:
+				failed(str(e))
+				return
+			self._logger.info(f'configuration exported to {path}')
+
+		def failed(message):
+			self._logger.warning(f'exporting the configuration failed: {message}')
+			QMessageBox.warning(self, self.tr('Export configuration'),
+			                    self.tr('Exporting the configuration failed: %s') % message)
+
+		self._runTask(self.tr('Export configuration'), self.tr('Reading the configuration items...'), 0,
+		              lambda report, aborted: self._conf.export_tree(report, aborted),
+		              lambda args: progress(*args), done, failed)
+
+	def _importFile(self):
+		"""Write the values of a JSON5 file to the configuration tree, skipping the ones which cannot be
+		written, and warn about them at the end."""
+		if self._job is not None or self._task is not None:
+			return
+		path, _filter = QFileDialog.getOpenFileName(self, self.tr('Import configuration'), '',
+		                                            self.tr(self.FILE_FILTER))
+		if not path:
+			return
+		try:
+			with open(path, encoding='utf-8') as f:
+				data = json5.load(f)
+			if not isinstance(data, dict):
+				raise ValueError('the file does not contain an object of the configuration items')
+		except Exception as e:
+			QMessageBox.warning(self, self.tr('Import configuration'),
+			                    self.tr('Reading %s failed: %s') % (path, e))
+			return
+		# The values imported replace the one being edited.
+		self._tree.finishEditing(write=False)
+		self._logger.info(f'importing the configuration from {path}')
+		total = len(leaf_paths(data))
+		count = written = 0
+
+		def progress(args):
+			nonlocal count, written
+			count += 1
+			written += bool(args[0])
+			self._progress.setProgress(count)
+
+		def failed(message):
+			self._logger.warning(f'importing the configuration failed: {message}')
+			QMessageBox.warning(self, self.tr('Import configuration'),
+			                    self.tr('Importing the configuration failed: %s') % message)
+			self._importFinished(written, total, None)
+
+		self._runTask(self.tr('Import configuration'), self.tr('Writing the configuration values...'), total,
+		              lambda report, aborted: self._conf.import_tree(data, report, aborted),
+		              progress, lambda failures: self._importFinished(written, total, failures), failed,
+		              aborted=lambda: self._importFinished(written, total, None))
+
+	#: The most values skipped listed in the warning after an import.
+	IMPORT_FAILURES_SHOWN = 15
+
+	def _importFinished(self, written, total, failures):
+		"""Show the ``written`` values imported, ``failures`` lists the values skipped, ``None`` if the import
+		did not finish."""
+		if written:
+			# Show the values written, they are not saved on the device yet.
+			self._tree.refresh()
+			self._setUnsaved(True)
+		if failures is None:
+			return
+		self._logger.info(f'configuration imported, {written} of {total} values written')
+		if not failures:
+			return
+		for path, reason in failures:
+			self._logger.warning(f'importing {"/".join(path)} failed: {reason}')
+		lines = [f'{"/".join(path)}: {reason}' for path, reason in failures[:self.IMPORT_FAILURES_SHOWN]]
+		if len(failures) > self.IMPORT_FAILURES_SHOWN:
+			lines.append(self.tr('... and %d more') % (len(failures) - self.IMPORT_FAILURES_SHOWN))
+		QMessageBox.warning(self, self.tr('Import configuration'),
+		                    self.tr('Not all values were imported, %d of %d were skipped:\n\n%s') % (
+		                    len(failures), total, '\n'.join(lines)))
+
+	def _runTask(self, title, text, total, fn, progress, done, failed, aborted=None):
+		"""Run the export or import ``fn`` (see :class:`_TreeTask`) showing its progress, ``total`` steps or
+		a busy indicator if 0. ``progress``, ``done`` and ``failed`` are called with the arguments of the
+		signals of the task, ``aborted`` without any when the progress window aborts it."""
+		self._setBusy(True)
+		self._progress = ProgressWindow(title, text)
+		self._progress.setProgress(0, total)
+		self._progress.aborted.connect(self._abortTask)
+		self._progress.showOver(self)
+
+		def ended(callback, *args):
+			self._task = None
+			self._progress.finish()
+			self._progress = None
+			self._setBusy(False)
+			if callback is not None:
+				callback(*args)
+
+		self._task = _TreeTask(self._conf, fn)
+		self._task.progress.connect(lambda args: progress(args) if self._progress is not None else None)
+		self._task.done.connect(lambda result: ended(done, result))
+		self._task.failed.connect(lambda message: ended(failed, message))
+		self._task.aborted.connect(lambda: ended(aborted))
+		self._task.start()
+
+	@Slot()
+	def _abortTask(self):
+		if self._task is not None:
+			self._task.abort()
+			self._progress.setText(self.tr('Aborting...'))
+			self._progress.setAbortEnabled(False)
+
+	def abort(self):
+		"""Abort the export or import running, if any, and close its progress window, e.g. when the window
+		closes. Nothing is reported of it any more."""
+		if self._task is not None:
+			self._task.abort()
+			for signal in (self._task.progress, self._task.done, self._task.failed, self._task.aborted):
+				signal.disconnect()
+			self._task = None
+			self._progress.finish()
+			self._progress = None
 
 
 class ConfTreeWindow(AppletWindow):
@@ -1246,7 +1644,8 @@ class ConfTreeWindow(AppletWindow):
 
 		self.setWindowTitle(f'Configuration tree ({name})')
 		self._conf = ConfClient(self._side)
-		self.setWidget(ConfTree(self._conf))
+		self._tree = ConfTree(self._conf)
+		self.setWidget(self._tree)
 		self.resize(950, 500)
 
 	@Slot(object)
@@ -1258,5 +1657,6 @@ class ConfTreeWindow(AppletWindow):
 		if self._connection is not None:
 			self._connection.connectionChanged.disconnect(self._connectionChanged)
 			self._connection = None
+			self._tree.abort()
 			self._conf.close()
 		super().closeEvent(event)

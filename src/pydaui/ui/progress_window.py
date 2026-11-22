@@ -152,6 +152,16 @@ class ProgressWindow(AppletWindow):
 		self.setWidget(widget)
 		self.resize(400, 200)
 
+	def showOver(self, widget):
+		"""Show the window in the MDI area the window of ``widget`` is in, centered over it."""
+		subwindow = widget
+		while subwindow is not None and not isinstance(subwindow, QMdiSubWindow):
+			subwindow = subwindow.parent()
+		if subwindow is not None and subwindow.mdiArea() is not None:
+			subwindow.mdiArea().addSubWindow(self)
+			self.move(subwindow.geometry().center() - self.rect().center())
+		self.show()
+
 	def setText(self, text):
 		"""Describe the current action."""
 		self._text.setText(text)

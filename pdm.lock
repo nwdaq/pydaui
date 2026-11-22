@@ -5,7 +5,7 @@
 groups = ["default", "build"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:d1f032e608a6365319c8aa53a7faa0f6bd7189a3b8604533eafaad8a41a91191"
+content_hash = "sha256:8fd61f2dc7334d6a9ab269e5ab36e2f0548f342839fba63e489ec3e60117bbfa"
 
 [[metadata.targets]]
 requires_python = ">=3.13,<3.14"
@@ -426,6 +426,17 @@ dependencies = [
 files = [
     {file = "jinja2-3.1.6-py3-none-any.whl", hash = "sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67"},
     {file = "jinja2-3.1.6.tar.gz", hash = "sha256:0137fb05990d35f1275a587e9aee6d56da821fc83491a0fb838183be43f66d6d"},
+]
+
+[[package]]
+name = "json5"
+version = "0.17.3"
+requires_python = ">=3.8.0"
+summary = "A Python implementation of the JSON5 data format."
+groups = ["default"]
+files = [
+    {file = "json5-0.17.3-py3-none-any.whl", hash = "sha256:2c8b22a893c35cd6a3c5ccbf1dd1c7d02c25dc1b5897fea658f9bf08c2e05f9a"},
+    {file = "json5-0.17.3.tar.gz", hash = "sha256:8d0278ad34ebaa9c3af76d9519274811830224a2d1cd5af156dbd067f461b8a4"},
 ]
 
 [[package]]
