@@ -22,7 +22,7 @@ from PySide6.QtCore import *
 from PySide6.QtWidgets import *
 from PySide6.QtGui import *
 
-from pydaui.ui.helpers import AppletWindow, DauiButton
+from pydaui.ui.helpers import AppletWindow, DauiButton, blend_colors
 from pydaui.ui.icons import Icons
 from pydaui.ui.tree import DetailTreeWidget, RowDelegate
 
@@ -673,6 +673,12 @@ class _ChildrenLoader(QObject):
 
 class ConfTreeWidget(DetailTreeWidget):
 
+	#: The number of nodes loaded so far changed, collapsed subtrees are counted once loaded.
+	loadedCountChanged = Signal(int)
+
+	#: A value was written to the device.
+	valueWritten = Signal()
+
 	PATH_ROLE = Qt.UserRole
 
 	#: Set on the placeholder child of an item whose children are being loaded.
@@ -722,6 +728,8 @@ class ConfTreeWidget(DetailTreeWidget):
 		self._filter = ''
 		# Set by expandAll(): subtrees loaded meanwhile are expanded too, until collapseAll() or refresh().
 		self._expand_all = False
+		# The number of nodes loaded, subtrees included.
+		self._loaded_count = 0
 		# The placeholders of the subtrees being loaded by each loader, showing an animated spinner.
 		self._spinning = {}
 		self._spinner_frames = [Icons.spinner(i) for i in range(Icons.SPINNER_FRAMES)]
@@ -751,6 +759,8 @@ class ConfTreeWidget(DetailTreeWidget):
 		# The placeholders are deleted with the items.
 		self._spinning.clear()
 		self.clear()
+		self._loaded_count = 0
+		self.loadedCountChanged.emit(0)
 		root = self.invisibleRootItem()
 		self._load(root, [], self._placeholder(root))
 
@@ -823,6 +833,8 @@ class ConfTreeWidget(DetailTreeWidget):
 		except RuntimeError:
 			# The item was removed (e.g. the tree was refreshed) while loading.
 			return
+		self._loaded_count += len(nodes)
+		self.loadedCountChanged.emit(self._loaded_count)
 		if self._expand_all:
 			self._expand_subtrees(item)
 		if self._filter:
@@ -1004,6 +1016,7 @@ class ConfTreeWidget(DetailTreeWidget):
 			self._showWritten(item, value)
 		except RuntimeError:
 			pass
+		self.valueWritten.emit()
 
 	@Slot(object, str, object)
 	def _on_write_failed(self, item, message, value):
@@ -1115,9 +1128,63 @@ class ConfTree(QWidget):
 
 		self._layout = QVBoxLayout()
 		self._layout.setContentsMargins(0, 0, 0, 0)
+		# Spaced below the toolbar only, the status bar is right below the tree, its padding around the text.
+		spacing = self._layout.spacing()
+		self._layout.setSpacing(0)
 		self._layout.addWidget(self._tb)
+		self._layout.addSpacing(spacing)
 		self._layout.addWidget(self._tree)
+
+		self._status = QStatusBar()
+		# The window is resized by its own frame.
+		self._status.setSizeGripEnabled(False)
+		self._loaded = QLabel()
+		self._status.addWidget(self._loaded)
+		self._unsaved = QLabel(self.tr('Changed values are not saved on the device yet'))
+		color = QColor(ConfTreeWidget.WRITE_FAILED_COLOR)
+		if self.palette().color(QPalette.Window).lightness() < 128:
+			# Lightened towards the text colour, the dark red is hard to read in a dark theme.
+			color = blend_colors(color, self.palette().color(QPalette.WindowText), self.UNSAVED_DARK_LIGHTEN)
+		self._unsaved.setStyleSheet('color: %s;' % color.name())
+		self._unsaved.setToolTip(self.tr('Save the configuration to keep the changes after the device restarts'))
+		self._unsaved.hide()
+		self._status.addPermanentWidget(self._unsaved)
+		# A bit higher than the text, centered in it.
+		for label in (self._loaded, self._unsaved):
+			label.setContentsMargins(4, 4, 4, 4)
+			label.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+		self._layout.addWidget(self._status)
 		self.setLayout(self._layout)
+
+		self._tree.loadedCountChanged.connect(self._showLoadedCount)
+		self._tree.valueWritten.connect(lambda: self._setUnsaved(True))
+		self._showLoadedCount(0)
+
+	#: The blue mixed into the background of the Save button while there are changes not saved, and how
+	#: much of it. Mixed with the button colour of the palette, the button text stays readable in a dark
+	#: theme too.
+	UNSAVED_SAVE_TINT = Icons.BLUE
+	UNSAVED_SAVE_TINT_RATIO = 0.6
+
+	#: How much the colour of the note about the changes not saved is mixed with the text colour in a dark
+	#: theme.
+	UNSAVED_DARK_LIGHTEN = 0.4
+
+	def _setUnsaved(self, unsaved):
+		"""Show the note about the changes not saved and tint the Save button while there are some."""
+		self._unsaved.setVisible(unsaved)
+		# An empty palette sets no colour, the button inherits them again.
+		palette = QPalette()
+		if unsaved:
+			palette.setColor(QPalette.Button, blend_colors(self.palette().color(QPalette.Button),
+				self.UNSAVED_SAVE_TINT, self.UNSAVED_SAVE_TINT_RATIO))
+		self._save.setPalette(palette)
+
+	def _showLoadedCount(self, count):
+		if count == 1:
+			self._loaded.setText(self.tr('1 node loaded'))
+		else:
+			self._loaded.setText(self.tr('%d nodes loaded') % count)
 
 	_JOB_TEXT = {
 		'load': ('Reload', 'Loading...', 'Loading the saved configuration failed'),
@@ -1153,6 +1220,8 @@ class ConfTree(QWidget):
 			QMessageBox.warning(self, self.tr('Configuration'), f'{self.tr(self._JOB_TEXT[cmd][2])}: {error}')
 			return
 		self._logger.info(f'{cmd} job finished')
+		# Saved, or replaced by the saved configuration.
+		self._setUnsaved(False)
 		if cmd == 'load':
 			# Show the configuration just loaded.
 			self._tree.refresh()

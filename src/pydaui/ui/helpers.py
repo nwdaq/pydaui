@@ -17,6 +17,16 @@ from PySide6.QtSvg import QSvgRenderer
 ANDROID = QSysInfo.productType() == 'android'
 
 
+def blend_colors(a, b, ratio):
+	"""Mix the colours ``a`` and ``b`` (QColor or anything QColor accepts): ``ratio`` 0 is ``a``, 1 is ``b``."""
+	a, b = QColor(a), QColor(b)
+	return QColor.fromRgbF(
+		a.redF() + (b.redF() - a.redF()) * ratio,
+		a.greenF() + (b.greenF() - a.greenF()) * ratio,
+		a.blueF() + (b.blueF() - a.blueF()) * ratio,
+	)
+
+
 def _icons():
 	"""The application icons, imported when used: they are built on :class:`SvgIcon` defined here."""
 	from pydaui.ui.icons import Icons
