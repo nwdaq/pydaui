@@ -134,6 +134,23 @@ class Icons:
 		"""A collapse all icon: two stacked boxes, the front one with a minus sign."""
 		return Icons._stackedBoxes('M5.75 14.75 H12.75')
 
+	#: The number of frames of the spinner animation.
+	SPINNER_FRAMES = 8
+
+	@staticmethod
+	def spinner(frame=0):
+		"""A frame of a busy spinner: dots in a circle growing clockwise, the largest at the head. Each
+		frame turns the circle by one dot clockwise."""
+		dots = []
+		for i in range(Icons.SPINNER_FRAMES):
+			# The dot i ahead of the smallest one, starting from the top for frame 0.
+			r = 1.3 + 1.7 * i / (Icons.SPINNER_FRAMES - 1)
+			angle = 360 * (i + frame) / Icons.SPINNER_FRAMES
+			dots.append(f'<circle cx="12" cy="3.2" r="{r:.2f}" transform="rotate({angle:.1f} 12 12)"/>')
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<g fill="{Icons.PRIMARY}">{''.join(dots)}</g>
+		</svg>""")
+
 	@staticmethod
 	def duplicate():
 		"""A duplicate icon: two overlapping sheets, the copy in front lower right of the original."""

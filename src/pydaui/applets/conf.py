@@ -699,6 +699,9 @@ class ConfTreeWidget(DetailTreeWidget):
 	#: Colour of a value whose last write failed.
 	WRITE_FAILED_COLOR = '#c0392b'
 
+	#: Interval of the spinner animation frames shown while loading, in milliseconds.
+	SPINNER_INTERVAL_MS = 100
+
 	#: Relative widths of the Name, Type, Flags, Value and Brief description columns, which always fill the
 	#: whole width.
 	COLUMN_RATIOS = (4, 2, 3, 4, 6)
@@ -719,6 +722,13 @@ class ConfTreeWidget(DetailTreeWidget):
 		self._filter = ''
 		# Set by expandAll(): subtrees loaded meanwhile are expanded too, until collapseAll() or refresh().
 		self._expand_all = False
+		# The placeholders of the subtrees being loaded by each loader, showing an animated spinner.
+		self._spinning = {}
+		self._spinner_frames = [Icons.spinner(i) for i in range(Icons.SPINNER_FRAMES)]
+		self._spinner_frame = 0
+		self._spinner_timer = QTimer(self)
+		self._spinner_timer.setInterval(self.SPINNER_INTERVAL_MS)
+		self._spinner_timer.timeout.connect(self._spin)
 
 		self.setColumnCount(5)
 		self.setHeaderLabels(['Name', 'Type', 'Flags', 'Value', 'Brief description'])
@@ -738,6 +748,8 @@ class ConfTreeWidget(DetailTreeWidget):
 		"""Reload the tree from the root, collapsing everything."""
 		self._closeEditor(write=True)
 		self._expand_all = False
+		# The placeholders are deleted with the items.
+		self._spinning.clear()
 		self.clear()
 		root = self.invisibleRootItem()
 		self._load(root, [], self._placeholder(root))
@@ -748,12 +760,28 @@ class ConfTreeWidget(DetailTreeWidget):
 
 	def _load(self, item, path, placeholder):
 		placeholder.setText(0, 'loading...')
+		placeholder.setIcon(0, self._spinner_frames[self._spinner_frame])
 		placeholder.setData(0, self.LOADING_ROLE, True)
 		loader = _ChildrenLoader(self._conf, path, item)
 		loader.done.connect(self._on_loaded)
 		loader.failed.connect(self._on_failed)
 		self._loaders.add(loader)
+		self._spinning[loader] = placeholder
+		self._spinner_timer.start()
 		loader.start()
+
+	def _spin(self):
+		"""Show the next spinner frame on the placeholders being loaded."""
+		self._spinner_frame = (self._spinner_frame + 1) % len(self._spinner_frames)
+		for placeholder in self._spinning.values():
+			placeholder.setIcon(0, self._spinner_frames[self._spinner_frame])
+
+	def _loaded(self, loader):
+		"""Forget a loader that finished, stopping the spinner once there is nothing loading."""
+		self._loaders.discard(loader)
+		self._spinning.pop(loader, None)
+		if not self._spinning:
+			self._spinner_timer.stop()
 
 	def _add_nodes(self, parent, nodes):
 		for node in nodes:
@@ -788,7 +816,7 @@ class ConfTreeWidget(DetailTreeWidget):
 
 	@Slot(object, list)
 	def _on_loaded(self, item, nodes):
-		self._loaders.discard(self.sender())
+		self._loaded(self.sender())
 		try:
 			item.takeChildren()
 			self._add_nodes(item, nodes)
@@ -802,7 +830,7 @@ class ConfTreeWidget(DetailTreeWidget):
 
 	@Slot(object, str)
 	def _on_failed(self, item, message):
-		self._loaders.discard(self.sender())
+		self._loaded(self.sender())
 		try:
 			# Leave a placeholder in place, collapsing and expanding the item again retries.
 			item.takeChildren()
