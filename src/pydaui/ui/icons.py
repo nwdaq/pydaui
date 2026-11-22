@@ -113,6 +113,28 @@ class Icons:
 		</svg>""")
 
 	@staticmethod
+	def _stackedBoxes(sign):
+		"""Two stacked boxes, like the expand/collapse indicators of tree items, the front one lower left
+		with ``sign`` (a path of lines) in it."""
+		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+			<g stroke="{Icons.PRIMARY}" stroke-width="1.1" stroke-linejoin="round">
+				<rect x="8.5" y="3" width="12.5" height="12.5" rx="2" fill="{Icons.WHITE}"/>
+				<rect x="3" y="8.5" width="12.5" height="12.5" rx="2" fill="{Icons.PRIMARY_LIGHT}"/>
+				<path d="{sign}" stroke-width="1.8" stroke-linecap="round"/>
+			</g>
+		</svg>""")
+
+	@staticmethod
+	def expandAll():
+		"""An expand all icon: two stacked boxes, the front one with a plus sign."""
+		return Icons._stackedBoxes('M5.75 14.75 H12.75 M9.25 11.25 V18.25')
+
+	@staticmethod
+	def collapseAll():
+		"""A collapse all icon: two stacked boxes, the front one with a minus sign."""
+		return Icons._stackedBoxes('M5.75 14.75 H12.75')
+
+	@staticmethod
 	def duplicate():
 		"""A duplicate icon: two overlapping sheets, the copy in front lower right of the original."""
 		return SvgIcon(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">

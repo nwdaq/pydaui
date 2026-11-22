@@ -717,6 +717,8 @@ class ConfTreeWidget(DetailTreeWidget):
 		self._edit_base = None
 		# The lowercase filter text, empty when not filtering.
 		self._filter = ''
+		# Set by expandAll(): subtrees loaded meanwhile are expanded too, until collapseAll() or refresh().
+		self._expand_all = False
 
 		self.setColumnCount(5)
 		self.setHeaderLabels(['Name', 'Type', 'Flags', 'Value', 'Brief description'])
@@ -735,6 +737,7 @@ class ConfTreeWidget(DetailTreeWidget):
 	def refresh(self):
 		"""Reload the tree from the root, collapsing everything."""
 		self._closeEditor(write=True)
+		self._expand_all = False
 		self.clear()
 		root = self.invisibleRootItem()
 		self._load(root, [], self._placeholder(root))
@@ -792,6 +795,8 @@ class ConfTreeWidget(DetailTreeWidget):
 		except RuntimeError:
 			# The item was removed (e.g. the tree was refreshed) while loading.
 			return
+		if self._expand_all:
+			self._expand_subtrees(item)
 		if self._filter:
 			self._apply_filter()
 
@@ -807,6 +812,23 @@ class ConfTreeWidget(DetailTreeWidget):
 			placeholder.setData(0, self.FAILED_ROLE, True)
 		except RuntimeError:
 			pass
+
+	def expandAll(self):
+		"""Expand every subtree. The subtrees not loaded yet are expanded as their children arrive."""
+		self._expand_all = True
+		self._expand_subtrees(self.invisibleRootItem())
+
+	def collapseAll(self):
+		self._expand_all = False
+		super().collapseAll()
+
+	def _expand_subtrees(self, parent):
+		for i in range(parent.childCount()):
+			item = parent.child(i)
+			# Only subtrees have children, a placeholder one if not loaded yet.
+			if item.childCount():
+				item.setExpanded(True)
+				self._expand_subtrees(item)
 
 	def mousePressEvent(self, event):
 		# A subtree row clicked anywhere, its indicator included, is expanded or collapsed here, not by the tree.
@@ -1007,7 +1029,8 @@ class ConfTreeWidget(DetailTreeWidget):
 
 
 class ConfTree(QWidget):
-	"""The configuration tree with its toolbar: Reload and Save on the left, the filter on the right."""
+	"""The configuration tree with its toolbar: Reload and Save on the left, Expand all, Collapse all and
+	the filter on the right."""
 
 	def __init__(self, conf: ConfClient):
 		super().__init__()
@@ -1037,6 +1060,15 @@ class ConfTree(QWidget):
 		spacer = QWidget()
 		spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
 		self._tb.addWidget(spacer)
+
+		expand = DauiButton(self.tr('Expand all'), Icons.expandAll())
+		expand.setToolTip(self.tr('Expand all configuration subtrees, loading them from the device'))
+		expand.clicked.connect(self._tree.expandAll)
+		self._tb.addWidget(expand)
+		collapse = DauiButton(self.tr('Collapse all'), Icons.collapseAll())
+		collapse.setToolTip(self.tr('Collapse all configuration subtrees'))
+		collapse.clicked.connect(self._tree.collapseAll)
+		self._tb.addWidget(collapse)
 
 		label = QLabel(self.tr('Filter:'))
 		label.setContentsMargins(6, 0, 4, 0)
