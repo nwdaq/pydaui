@@ -618,8 +618,8 @@ class _TreeTask(QObject):
 class TextEditor(QLineEdit):
 	"""The line edit of a value in the tree, the editor of the types without their own (see
 	:func:`create_editor`). It reports when its text should be written: after :attr:`IDLE_MS` without typing
-	(``idle``), on Enter (``commit``) or when it loses the focus (``focusLost``, with whether the editor should
-	close).
+	(``idle``), on Enter (``enter``, also moving to the next row) or when it loses the focus (``focusLost``,
+	with whether the editor should close).
 	"""
 
 	#: Typing pause after which the value is written, in milliseconds.
@@ -627,6 +627,7 @@ class TextEditor(QLineEdit):
 
 	idle = Signal()
 	commit = Signal()
+	enter = Signal()           # write the value and move to the next row
 	cancel = Signal()
 	focusLost = Signal(bool)   # close the editor
 	navigate = Signal(int)     # -1 previous row, +1 next row
@@ -678,7 +679,7 @@ class TextEditor(QLineEdit):
 		key = event.key()
 		if key in (Qt.Key_Return, Qt.Key_Enter):
 			self._timer.stop()
-			self.commit.emit()
+			self.enter.emit()
 		elif key == Qt.Key_Escape:
 			self._timer.stop()
 			self.cancel.emit()
@@ -706,6 +707,7 @@ class BoolEditor(QFrame):
 
 	idle = Signal()
 	commit = Signal()
+	enter = Signal()
 	cancel = Signal()
 	focusLost = Signal(bool)
 	navigate = Signal(int)
@@ -767,6 +769,9 @@ class BoolEditor(QFrame):
 			if key == Qt.Key_Escape:
 				self.cancel.emit()
 				return True
+			if key in (Qt.Key_Return, Qt.Key_Enter):
+				self.enter.emit()
+				return True
 			if key in (Qt.Key_Up, Qt.Key_Down):
 				self.navigate.emit(-1 if key == Qt.Key_Up else 1)
 				return True
@@ -781,6 +786,7 @@ class EnumEditor(QComboBox):
 
 	idle = Signal()
 	commit = Signal()
+	enter = Signal()
 	cancel = Signal()
 	focusLost = Signal(bool)
 	navigate = Signal(int)
@@ -820,6 +826,9 @@ class EnumEditor(QComboBox):
 		key = event.key()
 		if key == Qt.Key_Escape:
 			self.cancel.emit()
+		elif key in (Qt.Key_Return, Qt.Key_Enter):
+			# The open list takes Enter itself, choosing the value.
+			self.enter.emit()
 		elif key in (Qt.Key_Up, Qt.Key_Down) and not event.modifiers() & Qt.AltModifier:
 			# Alt+Down opens the list, as Space does.
 			self.navigate.emit(-1 if key == Qt.Key_Up else 1)
@@ -962,6 +971,8 @@ class ConfTreeWidget(DetailTreeWidget):
 		self._filter = ''
 		# Set by expandAll(): subtrees loaded meanwhile are expanded too, until collapseAll() or refresh().
 		self._expand_all = False
+		# The subtree entered on Enter whose children are being loaded, see _advance().
+		self._enter_pending = None
 		# The number of nodes loaded, subtrees included.
 		self._loaded_count = 0
 		# The placeholders of the subtrees being loaded by each loader, showing an animated spinner.
@@ -990,6 +1001,7 @@ class ConfTreeWidget(DetailTreeWidget):
 		"""Reload the tree from the root, collapsing everything."""
 		self._closeEditor(write=True)
 		self._expand_all = False
+		self._enter_pending = None
 		# The placeholders are deleted with the items.
 		self._spinning.clear()
 		self.clear()
@@ -1069,6 +1081,10 @@ class ConfTreeWidget(DetailTreeWidget):
 			return
 		self._loaded_count += len(nodes)
 		self.loadedCountChanged.emit(self._loaded_count)
+		if item is self._enter_pending:
+			self._enter_pending = None
+			if item is self.currentItem() and item.childCount():
+				self._navigate(1)
 		if self._expand_all:
 			self._expand_subtrees(item)
 		if self._filter:
@@ -1113,6 +1129,26 @@ class ConfTreeWidget(DetailTreeWidget):
 		self.setCurrentItem(item)
 		item.setExpanded(not item.isExpanded())
 
+	def keyPressEvent(self, event):
+		# Enter on a row without an editor, see _advance().
+		if event.key() in (Qt.Key_Return, Qt.Key_Enter) and self.currentItem() is not None:
+			self._advance()
+			return
+		super().keyPressEvent(event)
+
+	def _advance(self):
+		"""Go on from the current row on Enter: enter a subtree at its first item, expanding it if collapsed,
+		otherwise move to the next row. An editable value gets its editor there."""
+		item = self.currentItem()
+		if item.data(0, self.TYPE_ROLE) == CONF_SUBTREE:
+			item.setExpanded(True)
+			if item.childCount() and item.child(0).data(0, self.PATH_ROLE) is None:
+				# The children are still loading, the first one becomes current once they arrive, unless
+				# another row is current by then.
+				self._enter_pending = item
+				return
+		self._navigate(1)
+
 	def mouseDoubleClickEvent(self, event):
 		# Double clicks do nothing, their second click is pressed as another click.
 		pass
@@ -1144,6 +1180,7 @@ class ConfTreeWidget(DetailTreeWidget):
 		editor.setFont(item.font(self.VALUE_COLUMN))
 		editor.idle.connect(lambda: self._writeEdited(close=False))
 		editor.commit.connect(lambda: self._writeEdited(close=False))
+		editor.enter.connect(self._enterEdited)
 		editor.cancel.connect(self._cancelEdit)
 		editor.focusLost.connect(lambda close: self._writeEdited(close=close))
 		editor.navigate.connect(self._navigate)
@@ -1197,6 +1234,19 @@ class ConfTreeWidget(DetailTreeWidget):
 		# Keep the keyboard focus in the tree when there is no editor on the new row.
 		if self._editor is None:
 			self.setFocus()
+
+	@Slot()
+	def _enterEdited(self):
+		"""Write the value edited and move on to the next row, unless the text is not a valid value."""
+		item, editor = self._edit_item, self._editor
+		if item is None:
+			return
+		text = editor.text()
+		if text != self._edit_base and self._conf.parse(item.data(0, self.TYPE_ROLE), text,
+		                                                item.data(0, self.PATH_ROLE)) is None:
+			return
+		self._writeEdited(close=False)
+		self._advance()
 
 	@Slot(str)
 	def _validateEdited(self, text):
