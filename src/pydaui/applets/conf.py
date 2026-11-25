@@ -914,6 +914,26 @@ class _ChildrenLoader(QObject):
 		self.done.emit(self._item, nodes)
 
 
+class _StatusReader(QObject):
+	"""Reads the values of the given status items (:meth:`ConfClient.read`) off the GUI thread.
+
+	``done`` carries a list of (tree item, value) pairs, the value ``None`` if it cannot be read.
+	"""
+
+	done = Signal(list)
+
+	def __init__(self, conf, items):
+		super().__init__()
+		self._conf = conf
+		self._items = [(item, item.data(0, ConfTreeWidget.PATH_ROLE)) for item in items]
+
+	def start(self):
+		threading.Thread(target=self._run, name='conf-status', daemon=True).start()
+
+	def _run(self):
+		self.done.emit([(item, self._conf.read(path)) for item, path in self._items])
+
+
 class ConfTreeWidget(DetailTreeWidget):
 
 	#: The number of nodes loaded so far changed, collapsed subtrees are counted once loaded.
@@ -951,6 +971,9 @@ class ConfTreeWidget(DetailTreeWidget):
 	#: Interval of the spinner animation frames shown while loading, in milliseconds.
 	SPINNER_INTERVAL_MS = 100
 
+	#: Interval of reading the status values shown, in milliseconds.
+	STATUS_INTERVAL_MS = 1000
+
 	#: Relative widths of the Name, Type, Flags, Value and Brief description columns, which always fill the
 	#: whole width.
 	COLUMN_RATIOS = (4, 2, 3, 4, 6)
@@ -982,6 +1005,12 @@ class ConfTreeWidget(DetailTreeWidget):
 		self._spinner_timer = QTimer(self)
 		self._spinner_timer.setInterval(self.SPINNER_INTERVAL_MS)
 		self._spinner_timer.timeout.connect(self._spin)
+		# The reader of the status values shown, None when not reading.
+		self._status_reader = None
+		self._status_timer = QTimer(self)
+		self._status_timer.setInterval(self.STATUS_INTERVAL_MS)
+		self._status_timer.timeout.connect(self._readStatus)
+		self._status_timer.start()
 
 		self.setColumnCount(5)
 		self.setHeaderLabels(['Name', 'Type', 'Flags', 'Value', 'Brief description'])
@@ -1102,6 +1131,44 @@ class ConfTreeWidget(DetailTreeWidget):
 			placeholder.setData(0, self.FAILED_ROLE, True)
 		except RuntimeError:
 			pass
+
+	def _shownStatusItems(self, parent):
+		"""The status value items shown under ``parent``, descending into the expanded subtrees only."""
+		items = []
+		for i in range(parent.childCount()):
+			item = parent.child(i)
+			if item.isHidden() or item.data(0, self.PATH_ROLE) is None:
+				continue
+			if item.data(0, self.TYPE_ROLE) == CONF_SUBTREE:
+				if item.isExpanded():
+					items += self._shownStatusItems(item)
+			elif item.data(0, self.FLAGS_ROLE) & CONF_STATUS and item is not self._edit_item:
+				items.append(item)
+		return items
+
+	def _readStatus(self):
+		"""Read the status values shown again, unless the last read is still running."""
+		if self._status_reader is not None:
+			return
+		items = self._shownStatusItems(self.invisibleRootItem())
+		if not items:
+			return
+		self._status_reader = _StatusReader(self._conf, items)
+		self._status_reader.done.connect(self._on_status_read)
+		self._status_reader.start()
+
+	@Slot(list)
+	def _on_status_read(self, values):
+		self._status_reader = None
+		for item, value in values:
+			# The value being edited is left to the editor.
+			if value is None or item is self._edit_item:
+				continue
+			try:
+				item.setText(self.VALUE_COLUMN, value)
+			except RuntimeError:
+				# The item was removed (e.g. the tree was refreshed) while reading.
+				pass
 
 	def expandAll(self):
 		"""Expand every subtree. The subtrees not loaded yet are expanded as their children arrive."""
